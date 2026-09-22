@@ -7,4 +7,13 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Domain models are intentionally deferred to later modules.
+model Cliente {
+  id               Int      @id @default(autoincrement())
+  nombre           String
+  celular          String
+  direccion        String
+  manejaMedioLitro Boolean
+  activo           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}

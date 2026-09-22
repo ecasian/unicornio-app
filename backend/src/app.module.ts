@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { PrismaModule } from './db/prisma.module.js';
 import { HealthModule } from './health/health.module.js';
 import { ClientesModule } from './modules/clientes/clientes.module.js';
+import { RepartidoresModule } from './modules/repartidores/repartidores.module.js';
 
 @Module({
   imports: [
@@ -9,8 +11,10 @@ import { ClientesModule } from './modules/clientes/clientes.module.js';
       isGlobal: true,
       envFilePath: ['.env', '../.env'],
     }),
+    PrismaModule,
     HealthModule,
     ClientesModule,
+    RepartidoresModule,
   ],
 })
 export class AppModule {}

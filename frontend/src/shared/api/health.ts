@@ -1,20 +1,12 @@
-type HealthResponse = { status: 'ok' };
+import { getApiBaseUrl } from './config';
+export { ApiConfigurationError } from './config';
 
-export class ApiConfigurationError extends Error {
-  constructor() {
-    super('Configuración incompleta: define VITE_API_URL.');
-    this.name = 'ApiConfigurationError';
-  }
-}
+type HealthResponse = { status: 'ok' };
 
 export async function fetchHealth(
   apiUrl = import.meta.env.VITE_API_URL,
 ): Promise<HealthResponse> {
-  if (!apiUrl?.trim()) {
-    throw new ApiConfigurationError();
-  }
-
-  const response = await fetch(`${apiUrl.trim().replace(/\/$/, '')}/health`);
+  const response = await fetch(`${getApiBaseUrl(apiUrl)}/health`);
   if (!response.ok) {
     throw new Error(`La API respondió con HTTP ${response.status}`);
   }

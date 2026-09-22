@@ -9,7 +9,8 @@
     "start": "node dist/main.js",
     "lint": "eslint .",
     "test": "vitest run",
-    "prisma:validate": "dotenv -e ../.env -- prisma validate"
+    "prisma:validate": "dotenv -e ../.env -- prisma validate",
+    "verify:catalogo-db": "dotenv -e ../.env -- node scripts/verify-catalogo-db.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.4",

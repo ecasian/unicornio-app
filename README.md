@@ -87,3 +87,16 @@ Para validar la configuración de Prisma con `.env` presente:
 ```powershell
 npm run prisma:validate --prefix backend
 ```
+
+## Verificación del catálogo en PostgreSQL
+
+Con la migración aplicada y `DATABASE_URL` configurada en `.env`, ejecuta:
+
+```powershell
+npm run verify:catalogo-db --prefix backend
+```
+
+Esta comprobación lee las dos presentaciones iniciales y prueba la unicidad de
+`(saborId, presentacionId)` con una transacción que se revierte. Requiere una
+base PostgreSQL disponible y sirve también como paso de CI tras aplicar las
+migraciones.

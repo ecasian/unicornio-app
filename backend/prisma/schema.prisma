@@ -25,3 +25,33 @@ model Repartidor {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model Sabor {
+  id            Int                 @id @default(autoincrement())
+  nombre        String
+  activo        Boolean             @default(true)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  presentaciones SaborPresentacion[]
+}
+
+model Presentacion {
+  id                Int                 @id @default(autoincrement())
+  nombre            String              @unique
+  litrosEquivalentes Float
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  sabores           SaborPresentacion[]
+}
+
+model SaborPresentacion {
+  saborId        Int
+  presentacionId Int
+  habilitada     Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  sabor          Sabor        @relation(fields: [saborId], references: [id])
+  presentacion   Presentacion @relation(fields: [presentacionId], references: [id])
+
+  @@id([saborId, presentacionId])
+}

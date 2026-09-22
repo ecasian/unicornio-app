@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link } from 'react-router';
 import { clientesApi, type Cliente, type ClienteInput, type ClienteUpdate } from '../../shared/api/clientes';
+import { AdminHeader } from '../../shared/components/AdminHeader';
 import { ClienteForm } from './ClienteForm';
 
 type Editor = { kind: 'create' } | { kind: 'edit'; cliente: Cliente } | null;
@@ -47,7 +47,7 @@ export function ClientesPage() {
   }
 
   return <main className="min-h-screen bg-gradient-to-b from-fuchsia-900 via-fuchsia-800 to-fuchsia-950 pb-16 text-white">
-    <header className="bg-fuchsia-700 px-5 py-5"><div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3"><div><Link to="/" className="font-semibold">Unicornio</Link><span className="mx-3">/</span><span>Administrador</span><span className="mx-3">/</span><span>Clientes</span></div><button type="button" disabled title="Sucursales todavía no disponible" className="rounded-full border border-fuchsia-200 px-4 py-2 text-sm text-fuchsia-100 opacity-75">Sucursales · Próximamente</button></div></header>
+    <AdminHeader current="Clientes" />
     <div className="mx-auto max-w-5xl space-y-6 px-4 pt-8 sm:px-6"><div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-sm font-semibold uppercase tracking-widest text-fuchsia-200">Administrador</p><h1 className="text-3xl font-bold">Clientes</h1></div><button onClick={() => { setEditor({ kind: 'create' }); setFeedback(''); }} className="min-h-12 rounded-full bg-pink-500 px-6 font-bold text-white">Nuevo cliente</button></div>
       {feedback && <p role="status" className="rounded-xl bg-emerald-100 p-4 text-emerald-900">{feedback}</p>}
       {toggleError && <p role="alert" className="rounded-xl bg-red-100 p-4 text-red-900">{toggleError}</p>}

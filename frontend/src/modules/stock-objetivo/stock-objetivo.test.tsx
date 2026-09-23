@@ -187,6 +187,7 @@ describe('StockObjetivoPage', () => {
     expect(container.textContent).not.toContain('1/2 litro');
     medioHabilitado = true;
     await act(async () => { await queryClient.invalidateQueries({ queryKey: ['sabores', 1, 'presentaciones'] }); });
+    await flush();
     expect(checkbox('1/2 litro')).toBeTruthy();
   });
 
@@ -195,6 +196,7 @@ describe('StockObjetivoPage', () => {
     await check('1 litro');
     medioHabilitado = false;
     await act(async () => { await queryClient.invalidateQueries({ queryKey: ['sabores', 1, 'presentaciones'] }); });
+    await flush();
     expect(checkbox('1 litro').checked).toBe(true);
     expect(container.textContent).not.toContain('1/2 litro');
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('La configuración cambió');

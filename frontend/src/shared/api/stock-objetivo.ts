@@ -15,6 +15,7 @@ export type StockObjetivoItem = Pick<StockObjetivo, 'saborId' | 'presentacionId'
 
 export const stockObjetivoApi = {
   get: (clienteId: number) => request<StockObjetivo[]>(`/clientes/${clienteId}/stock-objetivo`),
+  getOperativo: (clienteId: number) => request<StockObjetivo[]>(`/clientes/${clienteId}/surtido-operativo`),
   replace: (clienteId: number, combinaciones: StockObjetivoItem[]) =>
     request<StockObjetivo[]>(`/clientes/${clienteId}/stock-objetivo`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ combinaciones }),

@@ -16,6 +16,7 @@ export type ClienteUpdate = Partial<ClienteInput & Pick<Cliente, 'activo'>>;
 
 export const clientesApi = {
   list: () => request<Cliente[]>('/clientes'),
+  listActive: () => request<Cliente[]>('/clientes?activo=true'),
   get: (id: number) => request<Cliente>(`/clientes/${id}`),
   create: (data: ClienteInput) => request<Cliente>('/clientes', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),

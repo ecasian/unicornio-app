@@ -71,6 +71,14 @@ La pantalla inicial consulta el endpoint de health y muestra si la API está
 disponible. El health indica disponibilidad del backend; no comprueba el estado
 de PostgreSQL.
 
+## Inicio de Repartidor
+
+La vista móvil para repartidores se abre directamente en `/repartidor`. Selecciona
+un repartidor activo, luego un cliente activo y muestra el surtido operativo
+configurado para ese cliente. Todavía no captura existencias; el botón para
+continuar al levantamiento permanece deshabilitado. Las selecciones se guardan
+solo en memoria durante el flujo actual y se pierden al recargar la página.
+
 ## Lint, pruebas y builds
 
 ```powershell

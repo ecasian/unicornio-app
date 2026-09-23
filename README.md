@@ -128,3 +128,49 @@ npm run verify:stock-db --prefix backend
 El comando genera el cliente Prisma y compila el backend antes de probar la API contra PostgreSQL real.
 Comprueba el reemplazo concurrente por cliente y el rollback tras un fallo;
 los registros temporales se eliminan al terminar.
+
+## Staging en Railway
+
+El proyecto Railway `unicornio-app` usa el environment `staging` con tres
+servicios. `Postgres` permanece en la red privada; `Backend` y `Frontend`
+tienen dominios HTTPS públicos. Cada aplicación se construye desde su propio
+directorio del monorepo (`/backend` y `/frontend`).
+
+| Servicio | Configuración |
+| --- | --- |
+| Backend | Build: `npx prisma generate && npm run build`; pre-deploy: `npx prisma migrate deploy`; start: `npm run start`; health check: `/api/health`. |
+| Frontend | Build: `npm run build`; start: `npm run start` (sirve `dist` en `$PORT` con fallback SPA); health check: `/`. |
+| Postgres | Base de datos privada, sin dominio TCP público. |
+
+Variables de `Backend` en `staging`:
+
+```text
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+FRONTEND_URL=https://${{Frontend.RAILWAY_PUBLIC_DOMAIN}}
+```
+
+Variable de `Frontend` en `staging`:
+
+```text
+VITE_API_URL=https://${{Backend.RAILWAY_PUBLIC_DOMAIN}}/api
+```
+
+Railway asigna `PORT` a cada servicio web. El backend lo prioriza sobre
+`BACKEND_PORT` y escucha en `0.0.0.0`. `VITE_API_URL` se incorpora al frontend
+durante el build: si cambia el dominio del backend, vuelve a desplegar el
+frontend. Las migraciones Prisma se aplican en pre-deploy antes de iniciar el
+backend; un fallo de migración impide publicar esa versión.
+
+URLs de staging:
+
+- Frontend: https://frontend-staging-b7bb.up.railway.app/
+- Backend: https://backend-staging-f866.up.railway.app/api
+
+Por ahora el despliegue se hace desde el checkout local validado, primero
+Backend y después Frontend; la conexión automática con `main` queda pendiente.
+Para validar, abre `/`, `/repartidor` y `/admin/clientes` en el frontend y
+`/api/health` en el backend. El health indica que la API responde, no que la
+base de datos esté disponible.
+
+**Staging no tiene autenticación. Usa exclusivamente datos demo, nunca datos
+reales de clientes, teléfonos o direcciones.**

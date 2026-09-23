@@ -28,8 +28,8 @@ async function bootstrap(): Promise<void> {
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document);
 
-  const port = Number(config.get<string>('BACKEND_PORT') ?? 3000);
-  await app.listen(port);
+  const port = Number(process.env.PORT ?? config.get<string>('BACKEND_PORT') ?? 3000);
+  await app.listen(port, '0.0.0.0');
 }
 
 void bootstrap();

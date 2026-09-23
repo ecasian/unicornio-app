@@ -5,6 +5,7 @@ import { catalogoApi } from '../../shared/api/catalogo';
 import { clientesApi } from '../../shared/api/clientes';
 import { stockObjetivoApi, type StockObjetivo, type StockObjetivoItem } from '../../shared/api/stock-objetivo';
 import { AdminHeader } from '../../shared/components/AdminHeader';
+import { presentacionPermitidaParaCliente } from '../../shared/domain/presentaciones';
 
 type Opcion = { saborId: number; saborNombre: string; presentacionId: number; presentacionNombre: string };
 type Seleccion = Record<string, string>;
@@ -99,7 +100,7 @@ export function StockObjetivoPage() {
   })) });
   if (!catalogReady && sabores.data && !sabores.isFetching && presentaciones.every((query) => query.data && !query.isFetching)) setCatalogReady(true);
   const opciones: Opcion[] = activos.flatMap((sabor, index) => (presentaciones[index]?.data ?? [])
-    .filter((item) => item.habilitada && (item.litrosEquivalentes !== 0.5 || cliente.data?.manejaMedioLitro))
+    .filter((item) => item.habilitada && presentacionPermitidaParaCliente(item.litrosEquivalentes, Boolean(cliente.data?.manejaMedioLitro)))
     .map((item) => ({ saborId: sabor.id, saborNombre: sabor.nombre, presentacionId: item.presentacionId, presentacionNombre: item.nombre })));
   const guardar = useMutation({
     mutationFn: (items: StockObjetivoItem[]) => stockObjetivoApi.replace(clienteId, items),

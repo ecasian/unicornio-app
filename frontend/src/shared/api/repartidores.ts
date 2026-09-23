@@ -13,6 +13,7 @@ export type RepartidorUpdate = Partial<Pick<Repartidor, 'nombre' | 'activo'>>;
 
 export const repartidoresApi = {
   list: () => request<Repartidor[]>('/repartidores'),
+  listActive: () => request<Repartidor[]>('/repartidores?activo=true'),
   get: (id: number) => request<Repartidor>(`/repartidores/${id}`),
   create: (data: RepartidorInput) => request<Repartidor>('/repartidores', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),

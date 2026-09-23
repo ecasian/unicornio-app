@@ -7,6 +7,18 @@ const details = {
   presentacion: { select: { id: true, nombre: true, litrosEquivalentes: true } },
 } as const;
 
+function motivoNoOperable(
+  saborActivo: boolean,
+  presentacionHabilitada: boolean,
+  litrosEquivalentes: number | undefined,
+  manejaMedioLitro: boolean,
+) {
+  if (!saborActivo) return 'sabor-inactivo';
+  if (!presentacionHabilitada) return 'presentacion-deshabilitada';
+  if (litrosEquivalentes === 0.5 && !manejaMedioLitro) return 'medio-litro-no-permitido';
+  return null;
+}
+
 // Espacio de claves de dos enteros: el segundo es el ID del cliente.
 export const STOCK_OBJETIVO_LOCK_NAMESPACE = 1398034243;
 
@@ -22,6 +34,32 @@ export class StockObjetivoService {
       include: details,
       orderBy: [{ saborId: 'asc' }, { presentacionId: 'asc' }],
     });
+  }
+
+  async getOperativo(clienteId: number) {
+    return this.prisma.$transaction(async (transaction) => {
+      const cliente = await transaction.cliente.findUnique({ where: { id: clienteId } });
+      if (!cliente) throw new NotFoundException('Cliente no encontrado');
+      if (!cliente.activo) throw new BadRequestException('El cliente está inactivo');
+
+      const stock = await transaction.stockObjetivo.findMany({
+        where: { clienteId },
+        include: details,
+        orderBy: [{ saborId: 'asc' }, { presentacionId: 'asc' }],
+      });
+      if (stock.length === 0) return [];
+
+      const relaciones = await transaction.saborPresentacion.findMany({
+        where: { saborId: { in: [...new Set(stock.map((item) => item.saborId))] }, habilitada: true },
+      });
+      const habilitadas = new Set(relaciones.map((item) => `${item.saborId}:${item.presentacionId}`));
+      return stock.filter((item) => !motivoNoOperable(
+        item.sabor.activo,
+        habilitadas.has(`${item.saborId}:${item.presentacionId}`),
+        item.presentacion.litrosEquivalentes,
+        cliente.manejaMedioLitro,
+      ));
+    }, { isolationLevel: 'RepeatableRead' });
   }
 
   async replace(clienteId: number, data: ReplaceStockObjetivoDto) {
@@ -46,12 +84,12 @@ export class StockObjetivoService {
       for (const { saborId, presentacionId } of data.combinaciones) {
         const sabor = sabores.find((item) => item.id === saborId);
         if (!sabor) throw new NotFoundException(`Sabor ${saborId} no encontrado`);
-        if (!sabor.activo) throw new BadRequestException(`El sabor ${sabor.nombre} está inactivo`);
         const relacion = relaciones.find((item) => item.saborId === saborId && item.presentacionId === presentacionId);
-        if (!relacion?.habilitada) throw new BadRequestException('La presentación no está habilitada para el sabor');
-        if (relacion.presentacion.litrosEquivalentes === 0.5 && !cliente.manejaMedioLitro) {
-          throw new BadRequestException('El cliente no maneja 1/2 litro');
-        }
+        const motivo = motivoNoOperable(sabor.activo, Boolean(relacion?.habilitada),
+          relacion?.presentacion.litrosEquivalentes, cliente.manejaMedioLitro);
+        if (motivo === 'sabor-inactivo') throw new BadRequestException(`El sabor ${sabor.nombre} está inactivo`);
+        if (motivo === 'presentacion-deshabilitada') throw new BadRequestException('La presentación no está habilitada para el sabor');
+        if (motivo === 'medio-litro-no-permitido') throw new BadRequestException('El cliente no maneja 1/2 litro');
       }
 
       const included = data.combinaciones.map(({ saborId, presentacionId }) => ({ saborId, presentacionId }));

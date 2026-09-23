@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "prisma:validate": "dotenv -e ../.env -- prisma validate",
-    "verify:catalogo-db": "dotenv -e ../.env -- node scripts/verify-catalogo-db.mjs"
+    "verify:catalogo-db": "dotenv -e ../.env -- node scripts/verify-catalogo-db.mjs",
+    "verify:stock-db": "dotenv -e ../.env -- prisma generate && npm run build && dotenv -e ../.env -- node scripts/verify-stock-db.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.4",

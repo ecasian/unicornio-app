@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Link } from 'react-router';
 import { clientesApi, type Cliente, type ClienteInput, type ClienteUpdate } from '../../shared/api/clientes';
 import { AdminHeader } from '../../shared/components/AdminHeader';
 import { ClienteForm } from './ClienteForm';
@@ -16,7 +17,7 @@ export function ClientesList({ clientes, onEdit, onToggle, busyId }: {
   return <ul className="grid gap-4 md:grid-cols-2">{clientes.map((cliente) => <li key={cliente.id} className="rounded-2xl bg-white p-5 shadow-sm">
     <div className="flex items-start justify-between gap-3"><h2 className="text-lg font-bold text-fuchsia-900">{cliente.nombre}</h2><span className={`rounded-full px-3 py-1 text-sm font-semibold ${cliente.activo ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'}`}>{cliente.activo ? 'Activo' : 'Inactivo'}</span></div>
     <dl className="mt-4 space-y-2 text-slate-700"><div><dt className="font-semibold">Celular</dt><dd>{cliente.celular}</dd></div><div><dt className="font-semibold">Dirección</dt><dd>{cliente.direccion}</dd></div><div><dt className="font-semibold">1/2 litro</dt><dd>{cliente.manejaMedioLitro ? 'Sí' : 'No'}</dd></div></dl>
-    <div className="mt-5 flex flex-wrap gap-3"><button onClick={() => onEdit(cliente)} className="min-h-11 rounded-full border border-fuchsia-700 px-5 font-semibold text-fuchsia-800">Editar</button><button disabled={busyId === cliente.id} onClick={() => onToggle(cliente)} className="min-h-11 rounded-full bg-fuchsia-700 px-5 font-semibold text-white disabled:opacity-50">{cliente.activo ? 'Desactivar' : 'Activar'}</button></div>
+    <div className="mt-5 flex flex-wrap gap-3"><button onClick={() => onEdit(cliente)} className="min-h-11 rounded-full border border-fuchsia-700 px-5 font-semibold text-fuchsia-800">Editar</button><button disabled={busyId === cliente.id} onClick={() => onToggle(cliente)} className="min-h-11 rounded-full bg-fuchsia-700 px-5 font-semibold text-white disabled:opacity-50">{cliente.activo ? 'Desactivar' : 'Activar'}</button>{cliente.activo ? <Link to={`/admin/clientes/${cliente.id}/stock-objetivo`} className="inline-flex min-h-11 items-center rounded-full border border-fuchsia-700 px-5 font-semibold text-fuchsia-800">Configurar stock</Link> : <span aria-disabled="true" className="inline-flex min-h-11 items-center rounded-full border border-slate-300 px-5 text-slate-500">Configurar stock</span>}</div>
   </li>)}</ul>;
 }
 

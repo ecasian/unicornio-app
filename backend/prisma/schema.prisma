@@ -16,6 +16,7 @@ model Cliente {
   activo           Boolean  @default(true)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+  stockObjetivos   StockObjetivo[]
 }
 
 model Repartidor {
@@ -33,6 +34,7 @@ model Sabor {
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
   presentaciones SaborPresentacion[]
+  stockObjetivos StockObjetivo[]
 }
 
 model Presentacion {
@@ -42,6 +44,7 @@ model Presentacion {
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
   sabores           SaborPresentacion[]
+  stockObjetivos    StockObjetivo[]
 }
 
 model SaborPresentacion {
@@ -54,4 +57,18 @@ model SaborPresentacion {
   presentacion   Presentacion @relation(fields: [presentacionId], references: [id])
 
   @@id([saborId, presentacionId])
+}
+
+model StockObjetivo {
+  clienteId      Int
+  saborId        Int
+  presentacionId Int
+  cantidad       Int
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  cliente        Cliente      @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  sabor          Sabor        @relation(fields: [saborId], references: [id], onDelete: Restrict)
+  presentacion   Presentacion @relation(fields: [presentacionId], references: [id], onDelete: Restrict)
+
+  @@id([clienteId, saborId, presentacionId])
 }

@@ -100,3 +100,23 @@ Esta comprobación lee las dos presentaciones iniciales y prueba la unicidad de
 `(saborId, presentacionId)` con una transacción que se revierte. Requiere una
 base PostgreSQL disponible y sirve también como paso de CI tras aplicar las
 migraciones.
+
+## Verificación de StockObjetivo en PostgreSQL
+
+Con PostgreSQL disponible, aplica las migraciones desde `backend`:
+
+```powershell
+Push-Location backend
+npx dotenv -e ../.env -- prisma migrate deploy
+Pop-Location
+```
+
+Después, desde la raíz:
+
+```powershell
+npm run verify:stock-db --prefix backend
+```
+
+El comando genera el cliente Prisma y compila el backend antes de probar la API contra PostgreSQL real.
+Comprueba el reemplazo concurrente por cliente y el rollback tras un fallo;
+los registros temporales se eliminan al terminar.

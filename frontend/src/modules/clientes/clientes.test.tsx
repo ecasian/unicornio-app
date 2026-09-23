@@ -103,6 +103,7 @@ describe('ClientesPage', () => {
     expect(container.textContent).toContain('Punto Fresco');
     expect(container.textContent).toContain('3121234567');
     expect(container.textContent).toContain('Activo');
+    expect(container.querySelector('a[href="/admin/clientes/1/stock-objetivo"]')?.textContent).toBe('Configurar stock');
     expect(listCalls).toBe(1);
   });
 

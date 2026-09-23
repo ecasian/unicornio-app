@@ -5,6 +5,7 @@ import { HealthModule } from './health/health.module.js';
 import { ClientesModule } from './modules/clientes/clientes.module.js';
 import { RepartidoresModule } from './modules/repartidores/repartidores.module.js';
 import { CatalogoModule } from './modules/catalogo/catalogo.module.js';
+import { StockObjetivoModule } from './modules/stock-objetivo/stock-objetivo.module.js';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { CatalogoModule } from './modules/catalogo/catalogo.module.js';
     ClientesModule,
     RepartidoresModule,
     CatalogoModule,
+    StockObjetivoModule,
   ],
 })
 export class AppModule {}

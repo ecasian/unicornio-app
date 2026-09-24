@@ -129,6 +129,24 @@ El comando genera el cliente Prisma y compila el backend antes de probar la API 
 Comprueba el reemplazo concurrente por cliente y el rollback tras un fallo;
 los registros temporales se eliminan al terminar.
 
+## Datos de demostración en Railway staging
+
+Tras confirmar que el Backend público pertenece a `unicornio-app/staging`, ejecuta:
+
+```powershell
+npm run seed:staging --prefix backend
+```
+
+El script usa exclusivamente la API HTTPS de staging indicada en
+`backend/scripts/seed-staging.mjs`; no necesita `DATABASE_URL` ni ejecuta
+migraciones. Comprueba el destino y las dos presentaciones antes de escribir,
+busca los catálogos por sus nombres `Demo` y omite los valores que ya
+coinciden. Se detiene si un cliente Demo tiene stock adicional que un
+reemplazo completo podría eliminar. No crea snapshots ni pedidos. Si Railway
+recrea el environment o cambia el dominio, vuelve a verificar el destino antes
+de actualizar el script. Como staging no tiene autenticación, usa solo datos
+ficticios.
+
 ## Staging en Railway
 
 El proyecto Railway `unicornio-app` usa el environment `staging` con tres

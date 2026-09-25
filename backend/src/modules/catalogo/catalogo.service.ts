@@ -58,7 +58,7 @@ export class CatalogoService {
     }
 
     await this.prisma.$transaction(async (transaction) => {
-      for (const { presentacionId, habilitada } of data.presentaciones) {
+      for (const { presentacionId, habilitada } of [...data.presentaciones].sort((a, b) => a.presentacionId - b.presentacionId)) {
         await transaction.saborPresentacion.upsert({
           where: { saborId_presentacionId: { saborId: id, presentacionId } },
           create: { saborId: id, presentacionId, habilitada },

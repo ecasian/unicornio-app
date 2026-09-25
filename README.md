@@ -75,8 +75,9 @@ de PostgreSQL.
 
 La vista móvil para repartidores se abre directamente en `/repartidor`. Selecciona
 un repartidor activo, luego un cliente activo y muestra el surtido operativo
-configurado para ese cliente. Todavía no captura existencias; el botón para
-continuar al levantamiento permanece deshabilitado. Las selecciones se guardan
+configurado para ese cliente. El botón para continuar al levantamiento permite
+registrar un snapshot completo cuando hay surtido operativo. Al guardarlo se
+crea automáticamente el movimiento de bitácora. Las selecciones se guardan
 solo en memoria durante el flujo actual y se pierden al recargar la página.
 
 ## Lint, pruebas y builds
@@ -128,6 +129,37 @@ npm run verify:stock-db --prefix backend
 El comando genera el cliente Prisma y compila el backend antes de probar la API contra PostgreSQL real.
 Comprueba el reemplazo concurrente por cliente y el rollback tras un fallo;
 los registros temporales se eliminan al terminar.
+
+## Verificación de Registro de Existencias en PostgreSQL
+
+Después de aplicar las migraciones con el comando anterior, ejecuta:
+
+```powershell
+npm run verify:existencias-db --prefix backend
+```
+
+El comando genera el cliente Prisma y compila antes de comprobar contra
+PostgreSQL real el snapshot completo, los ceros, la bitácora, la unicidad,
+los constraints y el rollback si falla la creación del movimiento. Elimina
+los registros temporales al terminar.
+
+## Datos de demostración en Railway staging
+
+Tras confirmar que el Backend público pertenece a `unicornio-app/staging`, ejecuta:
+
+```powershell
+npm run seed:staging --prefix backend
+```
+
+El script usa exclusivamente la API HTTPS de staging indicada en
+`backend/scripts/seed-staging.mjs`; no necesita `DATABASE_URL` ni ejecuta
+migraciones. Comprueba el destino y las dos presentaciones antes de escribir,
+busca los catálogos por sus nombres `Demo` y omite los valores que ya
+coinciden. Se detiene si un cliente Demo tiene stock adicional que un
+reemplazo completo podría eliminar. No crea snapshots ni pedidos. Si Railway
+recrea el environment o cambia el dominio, vuelve a verificar el destino antes
+de actualizar el script. Como staging no tiene autenticación, usa solo datos
+ficticios.
 
 ## Staging en Railway
 

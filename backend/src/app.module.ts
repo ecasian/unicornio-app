@@ -6,6 +6,7 @@ import { ClientesModule } from './modules/clientes/clientes.module.js';
 import { RepartidoresModule } from './modules/repartidores/repartidores.module.js';
 import { CatalogoModule } from './modules/catalogo/catalogo.module.js';
 import { StockObjetivoModule } from './modules/stock-objetivo/stock-objetivo.module.js';
+import { ExistenciasModule } from './modules/existencias/existencias.module.js';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { StockObjetivoModule } from './modules/stock-objetivo/stock-objetivo.mod
     RepartidoresModule,
     CatalogoModule,
     StockObjetivoModule,
+    ExistenciasModule,
   ],
 })
 export class AppModule {}

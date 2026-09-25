@@ -26,7 +26,10 @@ const repository = {
   $executeRaw: async () => 1,
   cliente: { findUnique: async ({ where }: { where: { id: number } }) => clientes.get(where.id) ?? null },
   sabor: { findMany: async ({ where }: { where: { id: { in: number[] } } }) => [...sabores.values()].filter((row) => where.id.in.includes(row.id)) },
-  saborPresentacion: { findMany: async ({ where }: { where: { saborId: { in: number[] }; habilitada?: boolean } }) => [...relaciones.values()].filter((row) => where.saborId.in.includes(row.saborId) && (where.habilitada === undefined || row.habilitada === where.habilitada)) },
+  saborPresentacion: { findMany: async ({ where }: { where: { saborId?: { in: number[] }; habilitada?: boolean; sabor?: { stockObjetivos: { some: { clienteId: number } } } } }) => {
+    const ids = where.saborId?.in ?? [...new Set([...rows.values()].filter((row) => row.clienteId === where.sabor?.stockObjetivos.some.clienteId).map((row) => row.saborId))];
+    return [...relaciones.values()].filter((row) => ids.includes(row.saborId) && (where.habilitada === undefined || row.habilitada === where.habilitada));
+  } },
   stockObjetivo: {
     findMany: async ({ where }: { where: { clienteId: number } }) => [...rows.values()].filter((row) => row.clienteId === where.clienteId).sort((a, b) => a.saborId - b.saborId || a.presentacionId - b.presentacionId).map(details),
     deleteMany: async ({ where }: { where: { clienteId: number; NOT?: { OR: { saborId: number; presentacionId: number }[] } } }) => {
@@ -45,7 +48,8 @@ const repository = {
       return details(row);
     },
   },
-  $transaction: async <T>(run: (tx: typeof repository) => Promise<T>) => {
+  $transaction: async <T>(run: ((tx: typeof repository) => Promise<T>) | Promise<unknown>[]) => {
+    if (Array.isArray(run)) return Promise.all(run) as T;
     const snapshot = new Map(rows);
     try { return await run(repository); }
     catch (error) { rows.clear(); for (const [key, row] of snapshot) rows.set(key, row); throw error; }

@@ -15,6 +15,7 @@
     "prisma:validate": "dotenv -e ../.env -- prisma validate",
     "verify:catalogo-db": "dotenv -e ../.env -- node scripts/verify-catalogo-db.mjs",
     "verify:stock-db": "dotenv -e ../.env -- prisma generate && npm run build && dotenv -e ../.env -- node scripts/verify-stock-db.mjs",
+    "verify:existencias-db": "dotenv -e ../.env -- prisma generate && npm run build && dotenv -e ../.env -- node scripts/verify-existencias-db.mjs",
     "seed:staging": "node scripts/seed-staging.mjs"
   },
   "dependencies": {

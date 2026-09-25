@@ -34,6 +34,8 @@ let stockB: StockObjetivo[];
 let fail: string | null;
 let delayedStock: Promise<Response> | null;
 let delayedStockB: Promise<Response> | null;
+let delayedSave: Promise<Response> | null;
+let saveFailure: string | null;
 let fetchMock: ReturnType<typeof vi.fn>;
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
@@ -54,6 +56,18 @@ async function click(name: string) {
   for (let index = 0; index < 3; index++) await flush();
 }
 
+async function enter(label: string, value: string) {
+  const input = [...container.querySelectorAll('input')].find((node) =>
+    node.labels?.[0]?.textContent?.includes(label));
+  if (!input) throw new Error(`No se encontró el campo ${label}`);
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    setter.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await flush();
+}
+
 async function renderFlow() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
@@ -64,6 +78,14 @@ async function renderFlow() {
     );
   });
   for (let index = 0; index < 3; index++) await flush();
+  return queryClient;
+}
+
+async function openCapture() {
+  await renderFlow();
+  await click('Seleccionar repartidor Jonathan');
+  await click('Seleccionar cliente Punto Fresco');
+  await click('Continuar al levantamiento');
 }
 
 beforeEach(() => {
@@ -76,7 +98,19 @@ beforeEach(() => {
   fail = null;
   delayedStock = null;
   delayedStockB = null;
+  delayedSave = null;
+  saveFailure = null;
   fetchMock = vi.fn(async (resource: string, init?: RequestInit) => {
+    if (/\/clientes\/(3|4)\/registros-existencias$/.test(resource) && init?.method === 'POST') {
+      if (delayedSave) return delayedSave;
+      if (saveFailure) return json({ message: saveFailure }, 400);
+      const payload = JSON.parse(String(init.body)) as { repartidorId: number; existencias: unknown[] };
+      const selectedClient = clientes.find((item) => resource.endsWith(`/clientes/${item.id}/registros-existencias`))!;
+      return json({ id: 19, clienteId: selectedClient.id, repartidorId: payload.repartidorId,
+        cliente: { id: selectedClient.id, nombre: selectedClient.nombre }, repartidor: { id: 1, nombre: repartidor.nombre },
+        createdAt: '2026-09-23T12:00:00.000Z', detalles: payload.existencias,
+        movimiento: { id: 30, tipo: 'REGISTRO_EXISTENCIAS' } }, 201);
+    }
     if (init?.method && init.method !== 'GET') return json({ message: 'Método no permitido' }, 405);
     if (resource.endsWith('/repartidores?activo=true')) {
       return fail === 'repartidores' ? json({ message: 'Sin conexión' }, 503) : json(repartidores);
@@ -136,7 +170,7 @@ describe('inicio de Repartidor', () => {
     expect(container.textContent).toContain('1/2 litro');
     expect(container.textContent).toContain('0 envases');
     expect(container.textContent).toContain('6 envases');
-    expect(button('Continuar al levantamiento').disabled).toBe(true);
+    expect(button('Continuar al levantamiento').disabled).toBe(false);
     expect(fetchMock.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true);
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/sabores/'))).toBe(false);
   });
@@ -233,12 +267,109 @@ describe('inicio de Repartidor', () => {
     expect(container.textContent).toContain('1 litro');
     expect(container.textContent).toContain('1/2 litro');
     expect(container.textContent?.match(/0 envases/g)).toHaveLength(2);
-    expect(button('Continuar al levantamiento').disabled).toBe(true);
+    expect(button('Continuar al levantamiento').disabled).toBe(false);
   });
 
   it('identifica cada cliente con nombre y dirección para tecnologías de apoyo', async () => {
     await renderFlow();
     await click('Seleccionar repartidor Jonathan');
     expect(button('Seleccionar cliente Punto Fresco').getAttribute('aria-label')).toContain('Dirección: Calle Norte 12');
+  });
+
+  it('captura todas las combinaciones, incluido cero, y confirma el snapshot', async () => {
+    await openCapture();
+    expect(container.textContent).toContain('Stock objetivo: 0 envases');
+    expect(container.querySelectorAll('input[type="number"]')).toHaveLength(2);
+    await enter('Fresa · 1 litro', '0');
+    await enter('Fresa · 1/2 litro', '4');
+    await click('Guardar existencias');
+    const post = fetchMock.mock.calls.find(([url, init]) => String(url).endsWith('/clientes/3/registros-existencias') && init?.method === 'POST');
+    expect(post).toBeTruthy();
+    expect(JSON.parse(String(post![1].body))).toEqual({ repartidorId: 1, existencias: [
+      { saborId: 7, presentacionId: 1, cantidad: 0 },
+      { saborId: 7, presentacionId: 2, cantidad: 4 },
+    ] });
+    expect(container.textContent).toContain('Registro de existencias guardado correctamente');
+    expect(container.textContent).toContain('Combinaciones registradas: 2');
+    expect(container.textContent).toContain('Jonathan');
+    expect(container.textContent).toContain('Punto Fresco');
+  });
+
+  it('descarta la captura de A al cambiar a B y envía solo las combinaciones de B', async () => {
+    clientes.push({ ...cliente, id: 4, nombre: 'Punto Sur', direccion: 'Calle Sur 5' });
+    stockB = [{ ...stockBase, clienteId: 4, saborId: 8, cantidad: 3,
+      sabor: { id: 8, nombre: 'Nuez', activo: true } }];
+    await openCapture();
+    await enter('Fresa · 1 litro', '9');
+    await enter('Fresa · 1/2 litro', '4');
+    await click('← Cambiar cliente');
+    await click('Seleccionar cliente Punto Sur');
+    expect(container.textContent).not.toContain('Fresa');
+    expect(container.textContent).toContain('Nuez');
+    await click('Continuar al levantamiento');
+    expect(container.querySelectorAll('input[type="number"]')).toHaveLength(1);
+    expect((container.querySelector('input[type="number"]') as HTMLInputElement).value).toBe('');
+    expect(container.textContent).not.toContain('Fresa');
+    await enter('Nuez · 1 litro', '2');
+    await click('Guardar existencias');
+    const posts = fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST');
+    expect(posts).toHaveLength(1);
+    expect(posts[0][0]).toBe('http://localhost:3000/api/clientes/4/registros-existencias');
+    expect(JSON.parse(String(posts[0][1].body))).toEqual({ repartidorId: 1, existencias: [
+      { saborId: 8, presentacionId: 1, cantidad: 2 },
+    ] });
+    expect(container.textContent).toContain('Registro de existencias guardado correctamente');
+    expect(container.textContent).toContain('Punto Sur');
+  });
+
+  it('rechaza un campo vacío y una cantidad negativa antes de llamar a la API', async () => {
+    await openCapture();
+    await enter('Fresa · 1 litro', '0');
+    await click('Guardar existencias');
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('campo vacío no equivale a cero');
+    await enter('Fresa · 1/2 litro', '-1');
+    await click('Guardar existencias');
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('entero no negativo');
+    expect(fetchMock.mock.calls.some(([url, init]) => String(url).includes('/registros-existencias') && init?.method === 'POST')).toBe(false);
+  });
+
+  it('muestra guardado en curso y error del backend sin perder las cantidades', async () => {
+    await openCapture();
+    await enter('Fresa · 1 litro', '3');
+    await enter('Fresa · 1/2 litro', '0');
+    let resolveSave!: (response: Response) => void;
+    delayedSave = new Promise<Response>((resolve) => { resolveSave = resolve; });
+    await click('Guardar existencias');
+    expect(button('Guardando existencias…').disabled).toBe(true);
+    await act(async () => { resolveSave(json({ message: 'Fallo del servidor' }, 500)); });
+    await flush();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Fallo del servidor');
+    expect((container.querySelector('input[type="number"]') as HTMLInputElement).value).toBe('3');
+  });
+
+  it('preserva la captura y bloquea el guardado si cambia el surtido remoto', async () => {
+    const queryClient = await renderFlow();
+    await click('Seleccionar repartidor Jonathan');
+    await click('Seleccionar cliente Punto Fresco');
+    await click('Continuar al levantamiento');
+    await enter('Fresa · 1 litro', '5');
+    stock = [stockBase];
+    await act(async () => { await queryClient.invalidateQueries({ queryKey: ['surtido-operativo', 3] }); });
+    await flush();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('configuración del surtido cambió');
+    expect((container.querySelector('input[type="number"]') as HTMLInputElement).value).toBe('5');
+    expect(button('Guardar existencias').disabled).toBe(true);
+    await click('Recargar levantamiento');
+    expect(container.querySelectorAll('input[type="number"]')).toHaveLength(0);
+  });
+
+  it('explica el conflicto del backend cuando el surtido cambió antes del POST', async () => {
+    await openCapture();
+    await enter('Fresa · 1 litro', '1');
+    await enter('Fresa · 1/2 litro', '2');
+    saveFailure = 'El surtido operativo cambió. Recarga el levantamiento antes de guardar.';
+    await click('Guardar existencias');
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('configuración del surtido cambió');
+    expect(button('Guardar existencias').disabled).toBe(true);
   });
 });

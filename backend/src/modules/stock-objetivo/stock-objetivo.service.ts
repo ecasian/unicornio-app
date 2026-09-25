@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import type { Cliente, Prisma, SaborPresentacion } from '@prisma/client';
 import { PrismaService } from '../../db/prisma.service.js';
 import { ReplaceStockObjetivoDto } from './dto/replace-stock-objetivo.dto.js';
 
@@ -6,6 +7,8 @@ const details = {
   sabor: { select: { id: true, nombre: true, activo: true } },
   presentacion: { select: { id: true, nombre: true, litrosEquivalentes: true } },
 } as const;
+
+type StockConDetalles = Prisma.StockObjetivoGetPayload<{ include: typeof details }>;
 
 function motivoNoOperable(
   saborActivo: boolean,
@@ -17,6 +20,19 @@ function motivoNoOperable(
   if (!presentacionHabilitada) return 'presentacion-deshabilitada';
   if (litrosEquivalentes === 0.5 && !manejaMedioLitro) return 'medio-litro-no-permitido';
   return null;
+}
+
+function filtrarOperativo(cliente: Cliente | null, stock: StockConDetalles[], relaciones: SaborPresentacion[]) {
+  if (!cliente) throw new NotFoundException('Cliente no encontrado');
+  if (!cliente.activo) throw new BadRequestException('El cliente está inactivo');
+
+  const habilitadas = new Set(relaciones.map((item) => `${item.saborId}:${item.presentacionId}`));
+  return stock.filter((item) => !motivoNoOperable(
+    item.sabor.activo,
+    habilitadas.has(`${item.saborId}:${item.presentacionId}`),
+    item.presentacion.litrosEquivalentes,
+    cliente.manejaMedioLitro,
+  ));
 }
 
 // Espacio de claves de dos enteros: el segundo es el ID del cliente.
@@ -37,29 +53,31 @@ export class StockObjetivoService {
   }
 
   async getOperativo(clienteId: number) {
-    return this.prisma.$transaction(async (transaction) => {
-      const cliente = await transaction.cliente.findUnique({ where: { id: clienteId } });
-      if (!cliente) throw new NotFoundException('Cliente no encontrado');
-      if (!cliente.activo) throw new BadRequestException('El cliente está inactivo');
-
-      const stock = await transaction.stockObjetivo.findMany({
-        where: { clienteId },
-        include: details,
+    const [cliente, stock, relaciones] = await this.prisma.$transaction([
+      this.prisma.cliente.findUnique({ where: { id: clienteId } }),
+      this.prisma.stockObjetivo.findMany({
+        where: { clienteId }, include: details,
         orderBy: [{ saborId: 'asc' }, { presentacionId: 'asc' }],
-      });
-      if (stock.length === 0) return [];
+      }),
+      this.prisma.saborPresentacion.findMany({
+        where: { habilitada: true, sabor: { stockObjetivos: { some: { clienteId } } } },
+      }),
+    ], { isolationLevel: 'RepeatableRead' });
+    return filtrarOperativo(cliente, stock, relaciones);
+  }
 
-      const relaciones = await transaction.saborPresentacion.findMany({
-        where: { saborId: { in: [...new Set(stock.map((item) => item.saborId))] }, habilitada: true },
-      });
-      const habilitadas = new Set(relaciones.map((item) => `${item.saborId}:${item.presentacionId}`));
-      return stock.filter((item) => !motivoNoOperable(
-        item.sabor.activo,
-        habilitadas.has(`${item.saborId}:${item.presentacionId}`),
-        item.presentacion.litrosEquivalentes,
-        cliente.manejaMedioLitro,
-      ));
-    }, { isolationLevel: 'RepeatableRead' });
+  async getOperativoInTransaction(transaction: Prisma.TransactionClient, clienteId: number) {
+    const cliente = await transaction.cliente.findUnique({ where: { id: clienteId } });
+
+    const stock = await transaction.stockObjetivo.findMany({
+      where: { clienteId },
+      include: details,
+      orderBy: [{ saborId: 'asc' }, { presentacionId: 'asc' }],
+    });
+    const relaciones = await transaction.saborPresentacion.findMany({
+      where: { saborId: { in: [...new Set(stock.map((item) => item.saborId))] }, habilitada: true },
+    });
+    return filtrarOperativo(cliente, stock, relaciones);
   }
 
   async replace(clienteId: number, data: ReplaceStockObjetivoDto) {

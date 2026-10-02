@@ -12,8 +12,8 @@ export class ExistenciasController {
   @Post()
   @ApiOperation({ summary: 'Guardar un snapshot completo de existencias y su movimiento de bitácora' })
   @ApiCreatedResponse({ type: RegistroExistenciasResponseDto })
-  @ApiBadRequestResponse({ description: 'Captura incompleta, surtido cambiado o catálogo inactivo' })
-  @ApiNotFoundResponse({ description: 'Cliente o repartidor no encontrado' })
+  @ApiBadRequestResponse({ description: 'Visita inconsistente, captura incompleta, surtido cambiado o catálogo inactivo' })
+  @ApiNotFoundResponse({ description: 'Cliente, repartidor o visita no encontrado' })
   create(@Param('clienteId', ParseIntPipe) clienteId: number, @Body() data: CreateRegistroExistenciasDto) {
     return this.existencias.create(clienteId, data);
   }

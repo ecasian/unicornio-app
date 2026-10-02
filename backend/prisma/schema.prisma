@@ -17,6 +17,7 @@ model Cliente {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   stockObjetivos   StockObjetivo[]
+  visitasCliente VisitaCliente[]
   registrosExistencias RegistroExistencias[]
   movimientosBitacora MovimientoBitacora[]
 }
@@ -27,6 +28,7 @@ model Repartidor {
   activo    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  visitasCliente VisitaCliente[]
   registrosExistencias RegistroExistencias[]
   movimientosBitacora MovimientoBitacora[]
 }
@@ -84,13 +86,28 @@ enum TipoMovimiento {
   PEDIDO_PRODUCCION
 }
 
+model VisitaCliente {
+  id            Int                  @id @default(autoincrement())
+  clienteId     Int
+  repartidorId  Int
+  llegadaAt     DateTime             @default(now())
+  cliente       Cliente              @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  repartidor    Repartidor           @relation(fields: [repartidorId], references: [id], onDelete: Restrict)
+  registrosExistencias RegistroExistencias[]
+
+  @@unique([id, clienteId, repartidorId])
+  @@index([clienteId, llegadaAt])
+}
+
 model RegistroExistencias {
   id          Int                  @id @default(autoincrement())
   clienteId   Int
   repartidorId Int
+  visitaClienteId Int?
   createdAt   DateTime             @default(now())
   cliente     Cliente              @relation(fields: [clienteId], references: [id], onDelete: Restrict)
   repartidor  Repartidor           @relation(fields: [repartidorId], references: [id], onDelete: Restrict)
+  visitaCliente VisitaCliente?      @relation(fields: [visitaClienteId, clienteId, repartidorId], references: [id, clienteId, repartidorId], onDelete: Restrict)
   detalles    DetalleExistencias[]
   movimiento  MovimientoBitacora?
 

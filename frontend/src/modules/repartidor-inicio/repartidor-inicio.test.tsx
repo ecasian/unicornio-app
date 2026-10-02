@@ -36,6 +36,9 @@ let delayedStock: Promise<Response> | null;
 let delayedStockB: Promise<Response> | null;
 let delayedSave: Promise<Response> | null;
 let saveFailure: string | null;
+let arrivalFailure: string | null;
+let delayedArrival: Promise<Response> | null;
+let arrivalId: number;
 let fetchMock: ReturnType<typeof vi.fn>;
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
@@ -85,6 +88,7 @@ async function openCapture() {
   await renderFlow();
   await click('Seleccionar repartidor Jonathan');
   await click('Seleccionar cliente Punto Fresco');
+  await click('Llegué a la tienda');
   await click('Continuar al levantamiento');
 }
 
@@ -100,13 +104,24 @@ beforeEach(() => {
   delayedStockB = null;
   delayedSave = null;
   saveFailure = null;
+  arrivalFailure = null;
+  delayedArrival = null;
+  arrivalId = 11;
   fetchMock = vi.fn(async (resource: string, init?: RequestInit) => {
+    if (/\/clientes\/(3|4)\/visitas$/.test(resource) && init?.method === 'POST') {
+      if (delayedArrival) return delayedArrival;
+      if (arrivalFailure) return json({ message: arrivalFailure }, 500);
+      const selectedClient = clientes.find((item) => resource.endsWith(`/clientes/${item.id}/visitas`))!;
+      const payload = JSON.parse(String(init.body)) as { repartidorId: number };
+      return json({ id: arrivalId++, clienteId: selectedClient.id, repartidorId: payload.repartidorId,
+        llegadaAt: '2026-09-30T12:00:00.000Z' }, 201);
+    }
     if (/\/clientes\/(3|4)\/registros-existencias$/.test(resource) && init?.method === 'POST') {
       if (delayedSave) return delayedSave;
       if (saveFailure) return json({ message: saveFailure }, 400);
-      const payload = JSON.parse(String(init.body)) as { repartidorId: number; existencias: unknown[] };
+      const payload = JSON.parse(String(init.body)) as { repartidorId: number; visitaClienteId: number; existencias: unknown[] };
       const selectedClient = clientes.find((item) => resource.endsWith(`/clientes/${item.id}/registros-existencias`))!;
-      return json({ id: 19, clienteId: selectedClient.id, repartidorId: payload.repartidorId,
+      return json({ id: 19, clienteId: selectedClient.id, repartidorId: payload.repartidorId, visitaClienteId: payload.visitaClienteId,
         cliente: { id: selectedClient.id, nombre: selectedClient.nombre }, repartidor: { id: 1, nombre: repartidor.nombre },
         createdAt: '2026-09-23T12:00:00.000Z', detalles: payload.existencias,
         movimiento: { id: 30, tipo: 'REGISTRO_EXISTENCIAS' } }, 201);
@@ -170,8 +185,11 @@ describe('inicio de Repartidor', () => {
     expect(container.textContent).toContain('1/2 litro');
     expect(container.textContent).toContain('0 envases');
     expect(container.textContent).toContain('6 envases');
+    expect(button('Continuar al levantamiento').disabled).toBe(true);
+    await click('Llegué a la tienda');
+    expect(container.textContent).toContain('Llegada registrada');
     expect(button('Continuar al levantamiento').disabled).toBe(false);
-    expect(fetchMock.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true);
+    expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith('/clientes/3/visitas') && init?.method === 'POST')).toBe(true);
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/sabores/'))).toBe(false);
   });
 
@@ -183,6 +201,42 @@ describe('inicio de Repartidor', () => {
     expect(container.textContent).toContain('Sin surtido operativo');
     expect(container.textContent).toContain('No puede iniciarse el levantamiento');
     expect(button('Continuar al levantamiento').disabled).toBe(true);
+  });
+
+  it('registra una sola llegada, muestra la hora del servidor y espera antes de continuar', async () => {
+    let resolveArrival!: (response: Response) => void;
+    delayedArrival = new Promise<Response>((resolve) => { resolveArrival = resolve; });
+    await renderFlow();
+    await click('Seleccionar repartidor Jonathan');
+    await click('Seleccionar cliente Punto Fresco');
+    expect(button('Continuar al levantamiento').disabled).toBe(true);
+    await click('Llegué a la tienda');
+    expect(button('Registrando llegada…').disabled).toBe(true);
+    expect(button('Continuar al levantamiento').disabled).toBe(true);
+    button('Registrando llegada…').click();
+    const arrivals = fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/clientes/3/visitas'));
+    expect(arrivals).toHaveLength(1);
+    expect(JSON.parse(String(arrivals[0][1].body))).toEqual({ repartidorId: 1 });
+    await act(async () => { resolveArrival(json({ id: 11, clienteId: 3, repartidorId: 1,
+      llegadaAt: '2026-09-30T12:00:00.000Z' }, 201)); });
+    await flush();
+    expect(container.textContent).toContain('Llegada registrada');
+    expect(container.textContent).toContain('Punto Fresco');
+    expect(container.textContent).toContain(new Date('2026-09-30T12:00:00.000Z').toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }));
+    expect(button('Continuar al levantamiento').disabled).toBe(false);
+  });
+
+  it('mantiene bloqueado el levantamiento si falla la llegada y permite reintentar', async () => {
+    arrivalFailure = 'Fallo temporal';
+    await renderFlow();
+    await click('Seleccionar repartidor Jonathan');
+    await click('Seleccionar cliente Punto Fresco');
+    await click('Llegué a la tienda');
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Fallo temporal');
+    expect(button('Continuar al levantamiento').disabled).toBe(true);
+    arrivalFailure = null;
+    await click('Llegué a la tienda');
+    expect(container.textContent).toContain('Llegada registrada');
   });
 
   it('muestra loading mientras consulta el stock del cliente', async () => {
@@ -228,12 +282,20 @@ describe('inicio de Repartidor', () => {
     await renderFlow();
     await click('Seleccionar repartidor Jonathan');
     await click('Seleccionar cliente Punto Fresco');
+    await click('Llegué a la tienda');
+    expect(container.textContent).toContain('Llegada registrada');
     await click('← Cambiar cliente');
     expect(container.textContent).toContain('Repartidor: Jonathan');
     expect(button('Seleccionar cliente Punto Fresco')).toBeTruthy();
+    await click('Seleccionar cliente Punto Fresco');
+    expect(button('Continuar al levantamiento').disabled).toBe(true);
+    expect(container.textContent).not.toContain('Llegada registrada');
     await click('← Cambiar repartidor');
     expect(button('Seleccionar repartidor Jonathan')).toBeTruthy();
     expect(container.textContent).not.toContain('Selecciona el cliente');
+    await click('Seleccionar repartidor Jonathan');
+    await click('Seleccionar cliente Punto Fresco');
+    expect(button('Continuar al levantamiento').disabled).toBe(true);
   });
 
   it('no muestra el surtido de A mientras carga el surtido de B', async () => {
@@ -267,6 +329,8 @@ describe('inicio de Repartidor', () => {
     expect(container.textContent).toContain('1 litro');
     expect(container.textContent).toContain('1/2 litro');
     expect(container.textContent?.match(/0 envases/g)).toHaveLength(2);
+    expect(button('Continuar al levantamiento').disabled).toBe(true);
+    await click('Llegué a la tienda');
     expect(button('Continuar al levantamiento').disabled).toBe(false);
   });
 
@@ -285,7 +349,7 @@ describe('inicio de Repartidor', () => {
     await click('Guardar existencias');
     const post = fetchMock.mock.calls.find(([url, init]) => String(url).endsWith('/clientes/3/registros-existencias') && init?.method === 'POST');
     expect(post).toBeTruthy();
-    expect(JSON.parse(String(post![1].body))).toEqual({ repartidorId: 1, existencias: [
+    expect(JSON.parse(String(post![1].body))).toEqual({ repartidorId: 1, visitaClienteId: 11, existencias: [
       { saborId: 7, presentacionId: 1, cantidad: 0 },
       { saborId: 7, presentacionId: 2, cantidad: 4 },
     ] });
@@ -306,16 +370,18 @@ describe('inicio de Repartidor', () => {
     await click('Seleccionar cliente Punto Sur');
     expect(container.textContent).not.toContain('Fresa');
     expect(container.textContent).toContain('Nuez');
+    expect(button('Continuar al levantamiento').disabled).toBe(true);
+    await click('Llegué a la tienda');
     await click('Continuar al levantamiento');
     expect(container.querySelectorAll('input[type="number"]')).toHaveLength(1);
     expect((container.querySelector('input[type="number"]') as HTMLInputElement).value).toBe('');
     expect(container.textContent).not.toContain('Fresa');
     await enter('Nuez · 1 litro', '2');
     await click('Guardar existencias');
-    const posts = fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST');
+    const posts = fetchMock.mock.calls.filter(([url, init]) => String(url).includes('/registros-existencias') && init?.method === 'POST');
     expect(posts).toHaveLength(1);
     expect(posts[0][0]).toBe('http://localhost:3000/api/clientes/4/registros-existencias');
-    expect(JSON.parse(String(posts[0][1].body))).toEqual({ repartidorId: 1, existencias: [
+    expect(JSON.parse(String(posts[0][1].body))).toEqual({ repartidorId: 1, visitaClienteId: 12, existencias: [
       { saborId: 8, presentacionId: 1, cantidad: 2 },
     ] });
     expect(container.textContent).toContain('Registro de existencias guardado correctamente');
@@ -351,6 +417,7 @@ describe('inicio de Repartidor', () => {
     const queryClient = await renderFlow();
     await click('Seleccionar repartidor Jonathan');
     await click('Seleccionar cliente Punto Fresco');
+    await click('Llegué a la tienda');
     await click('Continuar al levantamiento');
     await enter('Fresa · 1 litro', '5');
     stock = [stockBase];

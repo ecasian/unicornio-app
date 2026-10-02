@@ -6,6 +6,7 @@ export type RegistroExistencias = {
   id: number;
   clienteId: number;
   repartidorId: number;
+  visitaClienteId: number | null;
   createdAt: string;
   cliente: { id: number; nombre: string };
   repartidor: { id: number; nombre: string };
@@ -14,10 +15,10 @@ export type RegistroExistencias = {
 };
 
 export const existenciasApi = {
-  create: (clienteId: number, repartidorId: number, existencias: ExistenciaItem[]) =>
+  create: (clienteId: number, repartidorId: number, visitaClienteId: number, existencias: ExistenciaItem[]) =>
     request<RegistroExistencias>(`/clientes/${clienteId}/registros-existencias`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ repartidorId, existencias }),
+      body: JSON.stringify({ repartidorId, visitaClienteId, existencias }),
     }),
   get: (clienteId: number, id: number) =>
     request<RegistroExistencias>(`/clientes/${clienteId}/registros-existencias/${id}`),

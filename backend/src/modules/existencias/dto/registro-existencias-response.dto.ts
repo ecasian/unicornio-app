@@ -22,6 +22,7 @@ export class RegistroExistenciasResponseDto {
   @ApiProperty() id!: number;
   @ApiProperty() clienteId!: number;
   @ApiProperty() repartidorId!: number;
+  @ApiProperty({ nullable: true, description: 'Nulo solo para registros anteriores a VisitaCliente' }) visitaClienteId!: number | null;
   @ApiProperty({ type: String, format: 'date-time' }) createdAt!: Date;
   @ApiProperty({ type: PersonaResumenDto }) cliente!: PersonaResumenDto;
   @ApiProperty({ type: PersonaResumenDto }) repartidor!: PersonaResumenDto;

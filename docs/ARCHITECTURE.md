@@ -31,10 +31,14 @@ docs/                  decisiones y referencias del producto
 | Repartidores | Catálogo simple y selección de un repartidor activo. |
 | Catálogo | Sabores, las dos presentaciones iniciales y disponibilidad por sabor. |
 | Stock objetivo | Cantidades configuradas por el administrador. |
+| Visitas | Registra la llegada del repartidor al cliente antes del levantamiento. |
 | Existencias | Captura y consulta de snapshots completos e históricos. |
-| Reposición | Servicio de dominio que calcula la sugerencia a partir del objetivo y el snapshot vigente; no persiste una entidad `Reposicion`. |
-| Pedidos a producción | Cantidades sugeridas y solicitadas, envío y consulta. |
+| Reposición (futura) | Cálculo derivado del objetivo y la existencia vigente; no persiste una entidad `Reposicion`. |
+| Pedidos a producción (futuro) | Creación automática con la cantidad necesaria y consulta. |
 | Bitácora | Registro automático y consulta de movimientos. |
+
+Las experiencias previstas son `/admin`, `/repartidor` y, en un slice futuro,
+`/produccion`. Esta rama solo incorpora la llegada al flujo `/repartidor`.
 
 El botón «Sucursales» permanece visible e inactivo. No tiene modelo, API ni
 lógica. «Registro de ventas» en los mockups se interpreta como Bitácora/Historial
@@ -44,16 +48,17 @@ de movimientos, sin ventas contables.
 
 | Entidad | Campos principales | Relaciones |
 | --- | --- | --- |
-| `Cliente` | `id`, `nombre`, `celular`, `direccion`, `manejaMedioLitro`, `activo`, `createdAt`, `updatedAt` | Tiene objetivos, snapshots, pedidos y movimientos. No se relaciona con sucursales. |
-| `Repartidor` | `id`, `nombre`, `activo`, `createdAt`, `updatedAt` | Identifica al autor de snapshots, pedidos y movimientos. No tiene otros campos en el MVP. |
+| `Cliente` | `id`, `nombre`, `celular`, `direccion`, `manejaMedioLitro`, `activo`, `createdAt`, `updatedAt` | Tiene objetivos, visitas, snapshots, pedidos y movimientos. No se relaciona con sucursales. |
+| `Repartidor` | `id`, `nombre`, `activo`, `createdAt`, `updatedAt` | Identifica visitas, snapshots, pedidos y movimientos. No tiene otros campos en el MVP. |
 | `Sabor` | `id`, `nombre`, `activo`, `createdAt`, `updatedAt` | Se relaciona con presentaciones mediante `SaborPresentacion` y aparece en los detalles. |
 | `Presentacion` | `id`, `nombre`, `litrosEquivalentes`, `createdAt`, `updatedAt` | Valores iniciales: 1 litro (`1`) y 1/2 litro (`0.5`); no se crean otros tamaños en el MVP. |
 | `SaborPresentacion` | `saborId`, `presentacionId`, `habilitada`, `createdAt`, `updatedAt` | Una combinación única por sabor y presentación. |
 | `StockObjetivo` | `clienteId`, `saborId`, `presentacionId`, `cantidad`, `createdAt`, `updatedAt` | Una combinación única por cliente, sabor y presentación; su existencia define el surtido configurado. |
-| `RegistroExistencias` | `id`, `clienteId`, `repartidorId`, `createdAt` | Cabecera inmutable de un snapshot; tiene detalles y, como máximo, un pedido. `createdAt` es la fecha/hora del levantamiento. |
+| `VisitaCliente` | `id`, `clienteId`, `repartidorId`, `llegadaAt` | Llegada con hora generada por la BD; puede tener varios snapshots. No registra salida ni ubicación. |
+| `RegistroExistencias` | `id`, `clienteId`, `repartidorId`, `visitaClienteId`, `createdAt` | Cabecera inmutable de un snapshot; tiene detalles y, en el futuro, pedido. La visita es obligatoria en escrituras nuevas y nullable en BD para conservar históricos previos. |
 | `DetalleExistencias` | `registroExistenciasId`, `saborId`, `presentacionId`, `cantidad` | Una fila por combinación operable; hereda la fecha/hora de su cabecera. |
 | `PedidoProduccion` | `id`, `clienteId`, `repartidorId`, `registroExistenciasId`, `createdAt` | Referencia obligatoria y única al snapshot más reciente; tiene detalles. `createdAt` es la fecha/hora del pedido. |
-| `DetallePedido` | `pedidoProduccionId`, `saborId`, `presentacionId`, `cantidadSugerida`, `cantidadSolicitada` | Una fila por combinación del pedido; hereda la fecha/hora de su cabecera. |
+| `DetallePedido` (futuro) | `pedidoProduccionId`, `saborId`, `presentacionId`, `cantidadNecesaria` | Una fila por combinación del pedido; hereda la fecha/hora de su cabecera. La cantidad se deriva del objetivo y la existencia vigente. |
 | `MovimientoBitacora` | `id`, `clienteId`, `repartidorId`, `createdAt`, `tipo`, `registroExistenciasId` nullable, `pedidoProduccionId` nullable | `createdAt` es la fecha/hora del movimiento. Exactamente una referencia, según `tipo`. |
 
 Para `REGISTRO_EXISTENCIAS`, solo `registroExistenciasId` tiene valor; para
@@ -75,18 +80,16 @@ entidades porque su resultado se calcula y no se persiste.
 3. Las capturas nuevas incluyen todas las combinaciones operables del cliente.
    Una cantidad de cero se registra explícitamente; una combinación omitida
    hace incompleto el snapshot. Los snapshots anteriores no se modifican.
-4. Las cantidades son enteros no negativos. Para cada combinación operable,
-   la sugerencia es `max(stockObjetivo.cantidad - existenciaActual, 0)`.
-   Una combinación sin objetivo no entra en este cálculo.
-5. El pedido requiere el snapshot más reciente del mismo cliente. No se puede
-   elegir uno histórico. Cada snapshot genera como máximo un pedido; si el
-   más reciente ya tiene uno, se necesita un nuevo levantamiento. También se
-   necesita uno nuevo si las combinaciones operables actuales difieren de las
-   incluidas en ese snapshot.
-6. Al crear el pedido se guarda tanto `cantidadSugerida` como
-   `cantidadSolicitada` por detalle. La primera refleja el cálculo en ese
-   momento; la segunda refleja el ajuste final del repartidor. Los cambios
-   posteriores de objetivos o existencias no reescriben el pedido.
+4. Las cantidades son enteros no negativos. Antes de un levantamiento operativo
+   se registra una visita del mismo cliente y repartidor. La BD fija
+   `llegadaAt`; el celular no la envía. No hay salida, GPS, rutas ni tracking.
+5. En un slice futuro, guardar existencias generará automáticamente el pedido.
+   Para cada combinación se calculará
+   `cantidadNecesaria = max(stockObjetivo - existenciaVigente, 0)`.
+   No habrá edición libre de cantidades de producción que rompa esa igualdad.
+6. Una corrección futura de existencias creará otra versión: registro original
+   → corregido → vigente. No sobrescribirá históricos. El pedido futuro deberá
+   recalcularse para coincidir con objetivo menos la existencia vigente.
 7. Los totales conservan por separado unidades de 1 L y de 1/2 L. Los litros
    equivalentes se calculan como `unidades1L + unidades500ml * 0.5`.
 8. Una desactivación impide nuevas operaciones con el catálogo desactivado,
@@ -105,9 +108,13 @@ bitácora. Las presentaciones iniciales se mantienen limitadas a los tamaños
 de 1 L y 1/2 L; no se crean tamaños adicionales durante el MVP.
 
 **Repartidor:** selecciona manualmente un repartidor activo y un cliente activo;
-consulta objetivos; registra existencias; revisa la reposición sugerida; ajusta
-cantidades y envía el pedido. No crea sabores ni movimientos de bitácora de
-forma manual.
+consulta objetivos, marca su llegada y registra existencias. No crea sabores ni
+movimientos de bitácora de forma manual. Los pedidos automáticos son futuros.
+
+**Producción (futura):** `/produccion` consultará por defecto los levantamientos
+del día anterior: normalmente lo levantado el día D se produce la mañana del
+día D+1. Mostrará detalle por tienda y consolidado por sabor/presentación.
+Sucursales y producción vespertina quedan fuera de este alcance.
 
 Estas vistas no constituyen una frontera de seguridad mientras no exista
 autenticación.
@@ -120,34 +127,34 @@ autenticación.
    sabor activo, relación `SaborPresentacion` habilitada y presentación
    permitida para el cliente. Para clientes sin medio litro no muestra ni
    acepta filas de 1/2 litro. Un objetivo de cero sigue apareciendo.
-3. El repartidor introduce una cantidad no negativa para **cada** combinación,
+3. El repartidor pulsa «Llegué a la tienda». El backend valida cliente y
+   repartidor activos y registra `VisitaCliente.llegadaAt` con hora de BD.
+   Cambiar cliente o repartidor exige una nueva llegada.
+4. El repartidor introduce una cantidad no negativa para **cada** combinación,
    incluidos los ceros.
-4. El backend valida que el snapshot sea completo y guarda una nueva cabecera
-   con sus detalles. Nunca sobrescribe un registro anterior.
-5. En la misma transacción crea un movimiento `REGISTRO_EXISTENCIAS` con
+5. El backend valida la visita del mismo cliente y repartidor y que el snapshot
+   sea completo; guarda una nueva cabecera ligada a la visita con sus detalles.
+   Los registros anteriores a esta entidad conservan `visitaClienteId = null`
+   y siguen siendo legibles. Nunca se sobrescriben.
+6. En la misma transacción crea un movimiento `REGISTRO_EXISTENCIAS` con
    cliente, repartidor, fecha/hora y referencia al snapshot.
 
-## Flujo de pedido a producción
+## Flujo objetivo Reparto → Producción (futuro)
 
-1. Se obtiene exclusivamente el snapshot más reciente del cliente. Si no
-   existe, no se puede crear un pedido; si ya tiene pedido, se requiere un
-   nuevo snapshot. Se requiere uno nuevo si cambió el conjunto de
-   combinaciones operables. No se eligen snapshots históricos.
-2. El backend calcula la sugerencia para cada combinación operable con el
-   stock objetivo y las existencias del snapshot, sin negativos.
-3. El repartidor revisa y ajusta las cantidades solicitadas, también sin
-   negativos. Se mantienen separados los envases de 1 L y 1/2 L y se muestran
-   los litros equivalentes.
-4. Al enviar, el backend vuelve a validar cliente, repartidor, combinaciones,
-   snapshot y unicidad de pedido por snapshot. Guarda `cantidadSugerida` y
-   `cantidadSolicitada` en cada detalle.
-5. En la misma transacción crea un movimiento `PEDIDO_PRODUCCION` con cliente,
-   repartidor, fecha/hora y referencia al pedido.
+Repartidor → seleccionarse → seleccionar cliente → marcar «Llegué» → registrar
+llegada → capturar existencias → guardar levantamiento → calcular faltantes →
+crear pedido automáticamente → permitir corrección versionada si hubo error →
+Producción consulta al día siguiente por tienda y en consolidado.
+
+En esta rama el flujo termina al guardar el snapshot ligado a la visita.
+PedidoProduccion, correcciones y `/produccion` aún no están implementados.
 
 ## Bitácora automática
 
-Solo los dos eventos iniciales generan movimientos: `REGISTRO_EXISTENCIAS` y
-`PEDIDO_PRODUCCION`. La bitácora se consulta desde Administrador y sus entradas
+Los movimientos previstos son `REGISTRO_EXISTENCIAS` y `PEDIDO_PRODUCCION`.
+Actualmente solo se crea el primero. `VisitaCliente` es la fuente de verdad
+de la llegada y no genera un movimiento adicional. La bitácora se consulta
+desde Administrador en un slice futuro y sus entradas
 se crean únicamente como efecto de guardar correctamente el registro o pedido
 correspondiente. Cada entrada guarda exactamente una de las referencias
 `registroExistenciasId` o `pedidoProduccionId`, de acuerdo con `tipo`. No hay

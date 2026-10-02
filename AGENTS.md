@@ -46,9 +46,11 @@ Puede:
 - seleccionar cliente
 - registrar existencias
 - consultar stock objetivo
-- generar reposición
-- ajustar cantidades
-- enviar pedido a producción
+- registrar su llegada antes del levantamiento
+
+En slices posteriores podrá corregir existencias mediante un nuevo registro
+versionado si hubo un error. El pedido de producción se generará
+automáticamente a partir del levantamiento vigente.
 
 Las vistas representan flujos de trabajo, no permisos de seguridad.
 No hay autenticación ni usuarios reales en el MVP.
@@ -58,7 +60,7 @@ No hay autenticación ni usuarios reales en el MVP.
 Existe un catálogo simple `Repartidor` con únicamente `id`, `nombre`,
 `activo`, `createdAt` y `updatedAt`.
 La vista Repartidor requiere seleccionar un repartidor activo antes de registrar
-existencias o enviar un pedido. Su ID se conserva en los registros y movimientos.
+la llegada o existencias. Su ID se conserva en visitas, registros y movimientos.
 No eliminar repartidores físicamente.
 
 ## Clientes
@@ -136,24 +138,27 @@ nunca se sobrescriben.
 
 ## Reposición
 
-La sugerencia inicial se obtiene mediante:
+La cantidad necesaria para el futuro pedido se obtiene mediante:
 
-stock objetivo - existencia actual
+`max(stockObjetivo - existenciaActual, 0)`
 
-Nunca permitir cantidades negativas.
-
-La cantidad sugerida puede modificarse antes de enviar
-el pedido a producción.
 La reposición es un cálculo de dominio derivado de `StockObjetivo` y
-`RegistroExistencias`; no es una entidad persistente.
-Debe existir un registro de existencias antes de crear un pedido.
-Solo se puede usar el snapshot más reciente del cliente; no se seleccionan
-snapshots históricos. Si el más reciente ya tiene un pedido, se requiere un
-nuevo levantamiento. También se requiere uno nuevo si cambió el conjunto de
-combinaciones operables desde ese snapshot.
-Cada registro de existencias puede generar como máximo un pedido en el MVP.
-En cada detalle del pedido se conservan `cantidadSugerida` y
-`cantidadSolicitada`.
+`RegistroExistencias` vigente; no es una entidad persistente. El futuro
+`PedidoProduccion` se genera automáticamente al guardar el levantamiento
+vigente. No se permite modificar libremente la cantidad de producción de
+forma que rompa su relación con `StockObjetivo` y la existencia vigente.
+
+Si hubo un error en la captura, se crea una corrección versionada de
+existencias. El registro original permanece en el histórico y el corregido
+pasa a ser vigente. Después de la corrección, el futuro pedido debe
+recalcularse usando la existencia vigente.
+
+## Producción
+
+La experiencia futura `/produccion` mostrará el detalle por tienda y un
+consolidado por sabor/presentación. Normalmente consultará por defecto los
+levantamientos del día anterior: lo registrado el día D se produce la mañana
+del día D+1. No implementar todavía producción vespertina ni sucursales.
 
 ## Totales
 

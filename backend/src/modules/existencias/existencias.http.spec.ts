@@ -17,7 +17,7 @@ const relations = [
   { saborId: 3, presentacionId: 5, habilitada: true, presentacion: medio },
 ];
 type Detail = { saborId: number; presentacionId: number; cantidad: number };
-type Registro = { id: number; clienteId: number; repartidorId: number; createdAt: Date; detalles: Detail[] };
+type Registro = { id: number; clienteId: number; repartidorId: number; visitaClienteId: number | null; createdAt: Date; detalles: Detail[] };
 type Movimiento = { id: number; registroExistenciasId: number; clienteId: number; repartidorId: number; tipo: string; createdAt: Date };
 let stock: { saborId: number; presentacionId: number; cantidad: number }[];
 let registros: Registro[];
@@ -33,12 +33,16 @@ const repository = {
   $queryRaw: async () => [],
   cliente: { findUnique: async ({ where }: { where: { id: number } }) => where.id === 1 ? cliente : null },
   repartidor: { findUnique: async ({ where }: { where: { id: number } }) => where.id === 2 ? repartidor : null },
+  visitaCliente: { findUnique: async ({ where }: { where: { id: number } }) => where.id === 10
+    ? { id: 10, clienteId: 1, repartidorId: 2 }
+    : where.id === 11 ? { id: 11, clienteId: 9, repartidorId: 2 }
+      : where.id === 12 ? { id: 12, clienteId: 1, repartidorId: 9 } : null },
   saborPresentacion: { findMany: async () => relations.filter((item) => item.habilitada) },
   stockObjetivo: { findMany: async ({ where }: { where: { clienteId: number } }) => where.clienteId === 1 ? stock.map(expanded) : [] },
   registroExistencias: {
-    create: async ({ data }: { data: { clienteId: number; repartidorId: number; createdAt: Date; detalles: { create: Detail[] } } }) => {
+    create: async ({ data }: { data: { clienteId: number; repartidorId: number; visitaClienteId: number; createdAt: Date; detalles: { create: Detail[] } } }) => {
       const row = { id: registros.length + 1, clienteId: data.clienteId, repartidorId: data.repartidorId,
-        createdAt: data.createdAt, detalles: data.detalles.create };
+        visitaClienteId: data.visitaClienteId, createdAt: data.createdAt, detalles: data.detalles.create };
       registros.push(row);
       return row;
     },
@@ -78,8 +82,8 @@ describe('RegistroExistencias HTTP', () => {
   let app: INestApplication;
   let base: string;
   const item = (presentacionId: number, cantidad: number, saborId = 3) => ({ saborId, presentacionId, cantidad });
-  const post = (existencias: unknown, repartidorId: unknown = 2, clienteId = 1) => fetch(`${base}/${clienteId}/registros-existencias`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repartidorId, existencias }),
+  const post = (existencias: unknown, repartidorId: unknown = 2, clienteId = 1, visitaClienteId: unknown = 10) => fetch(`${base}/${clienteId}/registros-existencias`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repartidorId, visitaClienteId, existencias }),
   });
 
   beforeAll(async () => {
@@ -99,7 +103,7 @@ describe('RegistroExistencias HTTP', () => {
   it('creates a complete immutable snapshot with explicit zeros and one automatic movement', async () => {
     const response = await post([item(4, 0), item(5, 0)]);
     expect(response.status).toBe(201);
-    expect(await response.json()).toMatchObject({ clienteId: 1, repartidorId: 2, detalles: [
+    expect(await response.json()).toMatchObject({ clienteId: 1, repartidorId: 2, visitaClienteId: 10, detalles: [
       { saborId: 3, presentacionId: 4, cantidad: 0 }, { saborId: 3, presentacionId: 5, cantidad: 0 },
     ], movimiento: { tipo: 'REGISTRO_EXISTENCIAS' } });
     expect(registros).toHaveLength(1);
@@ -111,6 +115,19 @@ describe('RegistroExistencias HTTP', () => {
     expect((await fetch(path, { method: 'DELETE' })).status).toBe(404);
     expect((await fetch(`${base}/1/registros-existencias`, { method: 'DELETE' })).status).toBe(404);
     expect(registros[0].detalles).toHaveLength(2);
+  });
+
+  it('requires a matching visit and still reads historical records without one', async () => {
+    const items = [item(4, 0), item(5, 0)];
+    expect((await post(items, 2, 1, null)).status).toBe(400);
+    expect((await post(items, 2, 1, 99)).status).toBe(404);
+    expect((await post(items, 2, 1, 11)).status).toBe(400);
+    expect((await post(items, 2, 1, 12)).status).toBe(400);
+    expect(registros).toHaveLength(0);
+    registros.push({ id: 1, clienteId: 1, repartidorId: 2, visitaClienteId: null, createdAt: new Date(), detalles: items });
+    const historical = await fetch(`${base}/1/registros-existencias/1`);
+    expect(historical.status).toBe(200);
+    expect(await historical.json()).toMatchObject({ visitaClienteId: null });
   });
 
   it('rejects missing, extra and duplicate combinations without persisting a snapshot', async () => {

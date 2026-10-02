@@ -17,6 +17,9 @@ const functionName = `verify_existencias_fail_${suffix}`;
 let clienteId;
 let repartidorId;
 let saborId;
+let visitaId;
+let otherClienteId;
+let otherDriverId;
 let triggerCreated = false;
 let functionCreated = false;
 
@@ -46,9 +49,27 @@ try {
   ] });
 
   const base = `http://127.0.0.1:${port}/api/clientes/${clienteId}/registros-existencias`;
+  const visitasUrl = `http://127.0.0.1:${port}/api/clientes/${clienteId}/visitas`;
+  const beforeArrival = Date.now();
+  const arrivalResponse = await globalThis.fetch(visitasUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repartidorId }) });
+  assert.equal(arrivalResponse.status, 201, 'La llegada debe responder 201');
+  const visita = await arrivalResponse.json();
+  visitaId = visita.id;
+  assert.equal(visita.clienteId, clienteId);
+  assert.equal(visita.repartidorId, repartidorId);
+  assert.ok(Date.parse(visita.llegadaAt) >= beforeArrival - 1000 && Date.parse(visita.llegadaAt) <= Date.now() + 1000,
+    'La hora de llegada debe generarse en la base al crear la visita');
+  assert.equal((await prisma.visitaCliente.findUniqueOrThrow({ where: { id: visitaId } })).llegadaAt.toISOString(), visita.llegadaAt);
+  await assert.rejects(prisma.visitaCliente.create({ data: { clienteId: -1, repartidorId } }),
+    (error) => { assert.equal(error.code, 'P2003', 'FK de Cliente en VisitaCliente'); return true; });
+  await assert.rejects(prisma.visitaCliente.create({ data: { clienteId, repartidorId: -1 } }),
+    (error) => { assert.equal(error.code, 'P2003', 'FK de Repartidor en VisitaCliente'); return true; });
+  assert.equal((await globalThis.fetch(visitasUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repartidorId, llegadaAt: '2000-01-01T00:00:00.000Z' }) })).status, 400);
   const item = (presentacionId, cantidad) => ({ saborId, presentacionId, cantidad });
-  const post = (existencias) => globalThis.fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ repartidorId, existencias }) });
+  const post = (existencias, visit = visitaId) => globalThis.fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repartidorId, visitaClienteId: visit, existencias }) });
   const allZero = [item(litro.id, 0), item(medio.id, 0)];
 
   const surtidoUrl = `http://127.0.0.1:${port}/api/clientes/${clienteId}/surtido-operativo`;
@@ -109,11 +130,30 @@ try {
   }
 
   assert.equal((await post([item(litro.id, 1)])).status, 400, 'Snapshot incompleto');
+  assert.equal((await globalThis.fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repartidorId, existencias: allZero }) })).status, 400, 'Nueva escritura sin visita');
+  assert.equal((await post(allZero, visitaId + 999999)).status, 404, 'Visita inexistente');
+  const anotherClient = await prisma.cliente.create({ data: { nombre: `Visita ajena ${suffix}`, celular: '0000000000',
+    direccion: 'Temporal', manejaMedioLitro: true } });
+  otherClienteId = anotherClient.id;
+  const anotherVisit = await prisma.visitaCliente.create({ data: { clienteId: anotherClient.id, repartidorId } });
+  assert.equal((await post(allZero, anotherVisit.id)).status, 400, 'Visita de otro cliente');
+  await assert.rejects(prisma.registroExistencias.create({ data: { clienteId, repartidorId, visitaClienteId: anotherVisit.id } }),
+    (error) => { assert.equal(error.code, 'P2003', 'FK compuesta de visita y registro'); return true; });
+  await prisma.visitaCliente.delete({ where: { id: anotherVisit.id } });
+  await prisma.cliente.delete({ where: { id: anotherClient.id } });
+  const anotherDriver = await prisma.repartidor.create({ data: { nombre: `Conductor ajeno ${suffix}` } });
+  otherDriverId = anotherDriver.id;
+  const driverVisit = await prisma.visitaCliente.create({ data: { clienteId, repartidorId: anotherDriver.id } });
+  assert.equal((await post(allZero, driverVisit.id)).status, 400, 'Visita de otro repartidor');
+  await prisma.visitaCliente.delete({ where: { id: driverVisit.id } });
+  await prisma.repartidor.delete({ where: { id: anotherDriver.id } });
   assert.equal((await post([...allZero, item(litro.id, 1)])).status, 400, 'Combinación extra');
   assert.equal((await post([item(litro.id, 1), item(litro.id, 2)])).status, 400, 'Duplicado');
   const created = await post(allZero);
   assert.equal(created.status, 201);
   const registro = await created.json();
+  assert.equal(registro.visitaClienteId, visitaId, 'El snapshot debe conservar su visita');
   assert.deepEqual(registro.detalles.map((detail) => detail.cantidad), [0, 0]);
   assert.equal(registro.movimiento.tipo, 'REGISTRO_EXISTENCIAS');
   assert.equal((await globalThis.fetch(`${base}/${registro.id}`)).status, 200);
@@ -125,6 +165,9 @@ try {
   } }), { code: 'P2002' });
   // Cabecera distinta: la inserción no puede fallar por la PK compuesta anterior.
   const registroCheck = await prisma.registroExistencias.create({ data: { clienteId, repartidorId } });
+  const historical = await globalThis.fetch(`${base}/${registroCheck.id}`);
+  assert.equal(historical.status, 200, 'Un snapshot histórico sin visita debe poder consultarse');
+  assert.equal((await historical.json()).visitaClienteId, null);
   await assert.rejects(prisma.detalleExistencias.create({ data: {
     registroExistenciasId: registroCheck.id, ...item(litro.id, -1),
   } }), (error) => {
@@ -191,7 +234,13 @@ try {
     await prisma.detalleExistencias.deleteMany({ where: { registroExistencias: { clienteId } } });
     await prisma.registroExistencias.deleteMany({ where: { clienteId } });
     await prisma.stockObjetivo.deleteMany({ where: { clienteId } });
+    await prisma.visitaCliente.deleteMany({ where: { clienteId } });
   }
+  if (otherClienteId) {
+    await prisma.visitaCliente.deleteMany({ where: { clienteId: otherClienteId } });
+    await prisma.cliente.deleteMany({ where: { id: otherClienteId } });
+  }
+  if (otherDriverId) await prisma.repartidor.deleteMany({ where: { id: otherDriverId } });
   if (saborId) await prisma.saborPresentacion.deleteMany({ where: { saborId } });
   if (saborId) await prisma.sabor.delete({ where: { id: saborId } });
   if (repartidorId) await prisma.repartidor.delete({ where: { id: repartidorId } });

@@ -21,6 +21,11 @@ export class ExistenciaItemDto {
 }
 
 export class CreateRegistroExistenciasDto {
+  @ApiProperty({ example: 1, description: 'Visita cuya llegada ya fue registrada' })
+  @IsInt()
+  @Min(1)
+  visitaClienteId!: number;
+
   @ApiProperty({ example: 1 })
   @IsInt()
   @Min(1)

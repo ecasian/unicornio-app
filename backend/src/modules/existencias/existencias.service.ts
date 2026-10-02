@@ -62,6 +62,11 @@ export class ExistenciasService {
       if (!repartidor.activo) throw new BadRequestException('El repartidor está inactivo');
 
       const operativo = await this.stockObjetivo.getOperativoInTransaction(transaction, clienteId);
+      const visita = await transaction.visitaCliente.findUnique({ where: { id: data.visitaClienteId } });
+      if (!visita) throw new NotFoundException('Visita no encontrada');
+      if (visita.clienteId !== clienteId || visita.repartidorId !== data.repartidorId) {
+        throw new BadRequestException('La visita no corresponde al cliente y repartidor seleccionados');
+      }
       if (operativo.length === 0) {
         throw new BadRequestException('El cliente no tiene surtido operativo para registrar');
       }
@@ -73,7 +78,7 @@ export class ExistenciasService {
       const createdAt = new Date();
       const registro = await transaction.registroExistencias.create({
         data: {
-          clienteId, repartidorId: data.repartidorId, createdAt,
+          clienteId, repartidorId: data.repartidorId, visitaClienteId: visita.id, createdAt,
           detalles: { create: data.existencias.map(({ saborId, presentacionId, cantidad }) => ({ saborId, presentacionId, cantidad })) },
         },
       });

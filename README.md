@@ -76,9 +76,12 @@ de PostgreSQL.
 La vista móvil para repartidores se abre directamente en `/repartidor`. Selecciona
 un repartidor activo, luego un cliente activo y muestra el surtido operativo
 configurado para ese cliente. El botón para continuar al levantamiento permite
-registrar un snapshot completo cuando hay surtido operativo. Al guardarlo se
+registrar un snapshot completo cuando hay surtido operativo y se ha pulsado
+«Llegué a la tienda». La llegada queda registrada con la hora del servidor y
+el snapshot se vincula a esa visita. Al guardarlo se
 crea automáticamente el movimiento de bitácora. Las selecciones se guardan
-solo en memoria durante el flujo actual y se pierden al recargar la página.
+solo en memoria durante el flujo actual y se pierden al recargar la página;
+entonces será necesario seleccionar de nuevo y registrar otra llegada.
 
 ## Lint, pruebas y builds
 

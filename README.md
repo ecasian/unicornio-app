@@ -78,8 +78,10 @@ un repartidor activo, luego un cliente activo y muestra el surtido operativo
 configurado para ese cliente. El botón para continuar al levantamiento permite
 registrar un snapshot completo cuando hay surtido operativo y se ha pulsado
 «Llegué a la tienda». La llegada queda registrada con la hora del servidor y
-el snapshot se vincula a esa visita. Al guardarlo se
-crea automáticamente el movimiento de bitácora. Las selecciones se guardan
+el snapshot se vincula a esa visita. Al guardarlo se crea automáticamente un
+pedido con sus faltantes positivos, si los hay, y los movimientos de bitácora.
+Si no hay faltantes, la confirmación indica que no se requiere producción.
+Las selecciones se guardan
 solo en memoria durante el flujo actual y se pierden al recargar la página;
 entonces será necesario seleccionar de nuevo y registrar otra llegada.
 
@@ -143,7 +145,8 @@ npm run verify:existencias-db --prefix backend
 
 El comando genera el cliente Prisma y compila antes de comprobar contra
 PostgreSQL real el snapshot completo, los ceros, la bitácora, la unicidad,
-los constraints y el rollback si falla la creación del movimiento. Elimina
+los constraints de existencias y pedido, y el rollback si falla cualquier
+componente de la operación. Elimina
 los registros temporales al terminar.
 
 ## Datos de demostración en Railway staging

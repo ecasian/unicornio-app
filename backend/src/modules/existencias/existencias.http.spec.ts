@@ -22,7 +22,11 @@ type Movimiento = { id: number; registroExistenciasId: number; clienteId: number
 let stock: { saborId: number; presentacionId: number; cantidad: number }[];
 let registros: Registro[];
 let movimientos: Movimiento[];
+let pedidos: { id: number; clienteId: number; repartidorId: number; registroExistenciasId: number; detalles: { saborId: number; presentacionId: number; cantidadSugerida: number; cantidadSolicitada: number }[] }[];
 let failMovement: boolean;
+let failPedido: boolean;
+let failDetallePedido: boolean;
+let failPedidoMovement: boolean;
 let transactionCalls: number;
 
 const expanded = (row: { saborId: number; presentacionId: number; cantidad: number }) => ({
@@ -48,7 +52,11 @@ const repository = {
     },
     findUnique: async ({ where }: { where: { id: number } }) => {
       const row = registros.find((item) => item.id === where.id);
-      return row ? { ...row, cliente, repartidor, movimiento: movimientos.find((item) => item.registroExistenciasId === row.id) ?? null } : null;
+      const pedido = pedidos.find((item) => item.registroExistenciasId === row?.id);
+      return row ? { ...row, cliente, repartidor, movimiento: movimientos.find((item) => item.registroExistenciasId === row.id) ?? null,
+        pedidoProduccion: pedido ? { ...pedido, detalles: pedido.detalles.map((detail) => ({ ...detail, sabor,
+          presentacion: detail.presentacionId === 4 ? litro : medio })),
+        movimiento: movimientos.find((item) => (item as Movimiento & { pedidoProduccionId?: number }).pedidoProduccionId === pedido.id) } : null } : null;
     },
     findUniqueOrThrow: async ({ where }: { where: { id: number } }) => {
       const row = await repository.registroExistencias.findUnique({ where });
@@ -56,9 +64,20 @@ const repository = {
       return row;
     },
   },
+  pedidoProduccion: {
+    create: async ({ data }: { data: { clienteId: number; repartidorId: number; registroExistenciasId: number;
+      detalles: { create: { saborId: number; presentacionId: number; cantidadSugerida: number; cantidadSolicitada: number }[] } } }) => {
+      if (failPedido) throw Error('Pedido falló');
+      if (failDetallePedido) throw Error('DetallePedido falló');
+      const row = { id: pedidos.length + 1, clienteId: data.clienteId, repartidorId: data.repartidorId,
+        registroExistenciasId: data.registroExistenciasId, detalles: data.detalles.create };
+      pedidos.push(row);
+      return row;
+    },
+  },
   movimientoBitacora: {
     create: async ({ data }: { data: Omit<Movimiento, 'id'> }) => {
-      if (failMovement) throw Error('Movimiento falló');
+      if (failMovement || (failPedidoMovement && data.tipo === 'PEDIDO_PRODUCCION')) throw Error('Movimiento falló');
       const row = { id: movimientos.length + 1, ...data };
       movimientos.push(row);
       return row;
@@ -68,8 +87,9 @@ const repository = {
     transactionCalls += 1;
     const beforeRegistros = [...registros];
     const beforeMovimientos = [...movimientos];
+    const beforePedidos = [...pedidos];
     try { return await run(repository); }
-    catch (error) { registros = beforeRegistros; movimientos = beforeMovimientos; throw error; }
+    catch (error) { registros = beforeRegistros; movimientos = beforeMovimientos; pedidos = beforePedidos; throw error; }
   },
 };
 
@@ -97,7 +117,8 @@ describe('RegistroExistencias HTTP', () => {
   beforeEach(() => {
     cliente.activo = true; cliente.manejaMedioLitro = true; repartidor.activo = true; sabor.activo = true;
     relations.forEach((item) => { item.habilitada = true; });
-    stock = [item(4, 0), item(5, 6)]; registros = []; movimientos = []; failMovement = false; transactionCalls = 0;
+    stock = [item(4, 0), item(5, 6)]; registros = []; movimientos = []; pedidos = [];
+    failMovement = false; failPedido = false; failDetallePedido = false; failPedidoMovement = false; transactionCalls = 0;
   });
 
   it('creates a complete immutable snapshot with explicit zeros and one automatic movement', async () => {
@@ -107,7 +128,9 @@ describe('RegistroExistencias HTTP', () => {
       { saborId: 3, presentacionId: 4, cantidad: 0 }, { saborId: 3, presentacionId: 5, cantidad: 0 },
     ], movimiento: { tipo: 'REGISTRO_EXISTENCIAS' } });
     expect(registros).toHaveLength(1);
-    expect(movimientos).toHaveLength(1);
+    expect(movimientos).toHaveLength(2);
+    expect(pedidos).toHaveLength(1);
+    expect(pedidos[0].detalles).toMatchObject([{ cantidadSugerida: 6, cantidadSolicitada: 6 }]);
     expect(transactionCalls).toBe(1);
     const path = `${base}/1/registros-existencias/1`;
     expect((await fetch(path)).status).toBe(200);
@@ -175,6 +198,59 @@ describe('RegistroExistencias HTTP', () => {
     failMovement = true;
     expect((await post([item(4, 2), item(5, 0)])).status).toBe(500);
     expect(registros).toHaveLength(0);
+    expect(movimientos).toHaveLength(0);
+  });
+
+  it('calculates only positive shortages from the persisted snapshot in the POST response', async () => {
+    stock = [item(4, 10), item(5, 4)];
+    const response = await post([item(4, 7), item(5, 9)]);
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({ requiereProduccion: true, pedidoProduccion: {
+      clienteId: 1, repartidorId: 2, registroExistenciasId: 1,
+      detalles: [{ saborId: 3, presentacionId: 4, cantidadSugerida: 3, cantidadSolicitada: 3 }],
+      movimiento: { tipo: 'PEDIDO_PRODUCCION' },
+    } });
+    expect(pedidos).toHaveLength(1);
+    expect(movimientos.map((row) => row.tipo).sort()).toEqual(['PEDIDO_PRODUCCION', 'REGISTRO_EXISTENCIAS']);
+  });
+
+  it('creates two order details when both presentations have shortages', async () => {
+    stock = [item(4, 10), item(5, 4)];
+    const response = await post([item(4, 0), item(5, 2)]);
+    expect(response.status).toBe(201);
+    expect((await response.json()).pedidoProduccion.detalles).toMatchObject([
+      { presentacionId: 4, cantidadSugerida: 10, cantidadSolicitada: 10 },
+      { presentacionId: 5, cantidadSugerida: 2, cantidadSolicitada: 2 },
+    ]);
+    expect(pedidos).toHaveLength(1);
+  });
+
+  it.each([[0, 10], [10, 0], [15, 0]])('objective 10 and existence %i require %i units', async (existence, needed) => {
+    stock = [item(4, 10)];
+    const response = await post([item(4, existence)]);
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.requiereProduccion).toBe(needed > 0);
+    expect(body.pedidoProduccion?.detalles[0]?.cantidadSugerida ?? 0).toBe(needed);
+  });
+
+  it('keeps objective zero in the snapshot but creates no empty order', async () => {
+    stock = [item(4, 0), item(5, 0)];
+    const response = await post([item(4, 0), item(5, 3)]);
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({ requiereProduccion: false, pedidoProduccion: null,
+      detalles: [{ cantidad: 0 }, { cantidad: 3 }] });
+    expect(pedidos).toHaveLength(0);
+    expect(movimientos).toHaveLength(1);
+  });
+
+  it.each(['pedido', 'detalle', 'bitacora'] as const)('rolls back everything if %s creation fails', async (failure) => {
+    failPedido = failure === 'pedido';
+    failDetallePedido = failure === 'detalle';
+    failPedidoMovement = failure === 'bitacora';
+    expect((await post([item(4, 0), item(5, 0)])).status).toBe(500);
+    expect(registros).toHaveLength(0);
+    expect(pedidos).toHaveLength(0);
     expect(movimientos).toHaveLength(0);
   });
 });

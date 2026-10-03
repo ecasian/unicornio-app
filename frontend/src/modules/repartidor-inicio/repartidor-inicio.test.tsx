@@ -121,10 +121,23 @@ beforeEach(() => {
       if (saveFailure) return json({ message: saveFailure }, 400);
       const payload = JSON.parse(String(init.body)) as { repartidorId: number; visitaClienteId: number; existencias: unknown[] };
       const selectedClient = clientes.find((item) => resource.endsWith(`/clientes/${item.id}/registros-existencias`))!;
+      const selectedStock = selectedClient.id === 3 ? stock : stockB;
+      const detallesPedido = (payload.existencias as { saborId: number; presentacionId: number; cantidad: number }[])
+        .flatMap((existencia) => {
+          const objetivo = selectedStock.find((item) => item.saborId === existencia.saborId
+            && item.presentacionId === existencia.presentacionId)!;
+          const faltante = Math.max(objetivo.cantidad - existencia.cantidad, 0);
+          return faltante ? [{ pedidoProduccionId: 20, saborId: existencia.saborId,
+            presentacionId: existencia.presentacionId, cantidadSugerida: faltante, cantidadSolicitada: faltante,
+            sabor: objetivo.sabor, presentacion: objetivo.presentacion }] : [];
+        });
       return json({ id: 19, clienteId: selectedClient.id, repartidorId: payload.repartidorId, visitaClienteId: payload.visitaClienteId,
         cliente: { id: selectedClient.id, nombre: selectedClient.nombre }, repartidor: { id: 1, nombre: repartidor.nombre },
         createdAt: '2026-09-23T12:00:00.000Z', detalles: payload.existencias,
-        movimiento: { id: 30, tipo: 'REGISTRO_EXISTENCIAS' } }, 201);
+        movimiento: { id: 30, tipo: 'REGISTRO_EXISTENCIAS' }, requiereProduccion: detallesPedido.length > 0,
+        pedidoProduccion: detallesPedido.length ? { id: 20, clienteId: selectedClient.id,
+          repartidorId: payload.repartidorId, registroExistenciasId: 19, detalles: detallesPedido,
+          movimiento: { id: 31, tipo: 'PEDIDO_PRODUCCION' } } : null }, 201);
     }
     if (init?.method && init.method !== 'GET') return json({ message: 'Método no permitido' }, 405);
     if (resource.endsWith('/repartidores?activo=true')) {
@@ -357,6 +370,22 @@ describe('inicio de Repartidor', () => {
     expect(container.textContent).toContain('Combinaciones registradas: 2');
     expect(container.textContent).toContain('Jonathan');
     expect(container.textContent).toContain('Punto Fresco');
+    expect(container.textContent).toContain('Pedido enviado automáticamente a producción');
+    expect(container.textContent).toContain('Fresa · 1/2 litro');
+    expect(container.textContent).toContain('2 envases');
+    expect(container.textContent).not.toContain('Generar pedido');
+    expect(container.textContent).not.toContain('Enviar a producción');
+    expect(container.querySelectorAll('input[type="number"]')).toHaveLength(0);
+  });
+
+  it('confirma que no se requiere producción cuando el objetivo está cubierto', async () => {
+    await openCapture();
+    await enter('Fresa · 1 litro', '3');
+    await enter('Fresa · 1/2 litro', '6');
+    await click('Guardar existencias');
+    expect(container.textContent).toContain('Existencias guardadas');
+    expect(container.textContent).toContain('Este cliente no requiere producción.');
+    expect(container.textContent).not.toContain('Pedido enviado automáticamente');
   });
 
   it('descarta la captura de A al cambiar a B y envía solo las combinaciones de B', async () => {

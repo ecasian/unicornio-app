@@ -22,6 +22,10 @@ let otherClienteId;
 let otherDriverId;
 let triggerCreated = false;
 let functionCreated = false;
+const orderTriggerName = `verify_pedido_${suffix}`;
+const orderFunctionName = `verify_pedido_fail_${suffix}`;
+let orderTriggerTable;
+let orderFunctionCreated = false;
 
 try {
   app.setGlobalPrefix('api');
@@ -156,6 +160,8 @@ try {
   assert.equal(registro.visitaClienteId, visitaId, 'El snapshot debe conservar su visita');
   assert.deepEqual(registro.detalles.map((detail) => detail.cantidad), [0, 0]);
   assert.equal(registro.movimiento.tipo, 'REGISTRO_EXISTENCIAS');
+  assert.equal(registro.requiereProduccion, true);
+  assert.equal(registro.pedidoProduccion.detalles[0].cantidadSugerida, 6);
   assert.equal((await globalThis.fetch(`${base}/${registro.id}`)).status, 200);
   assert.equal(await prisma.detalleExistencias.count({ where: { registroExistenciasId: registro.id } }), 2);
   assert.equal(await prisma.movimientoBitacora.count({ where: { registroExistenciasId: registro.id } }), 1);
@@ -220,17 +226,96 @@ try {
   assert.equal((await post(allZero)).status, 500, 'El fallo de bitácora debe cancelar el POST');
   assert.equal(await prisma.registroExistencias.count({ where: { clienteId } }), 1, 'No debe persistir la segunda cabecera');
   assert.equal(await prisma.detalleExistencias.count({ where: { registroExistencias: { clienteId } } }), 2, 'No deben persistir detalles del POST fallido');
-  assert.equal(await prisma.movimientoBitacora.count({ where: { clienteId } }), 1, 'No debe persistir movimiento fallido');
+  assert.equal(await prisma.movimientoBitacora.count({ where: { clienteId } }), 2, 'No debe persistir movimiento fallido');
 
-  console.log('RegistroExistencias verificado en PostgreSQL real: snapshot completo, ceros, bitácora, unicidad, checks y rollback.');
+  await prisma.$executeRawUnsafe(`DROP TRIGGER "${triggerName}" ON "MovimientoBitacora"`);
+  triggerCreated = false;
+  await prisma.$executeRawUnsafe(`DROP FUNCTION "${functionName}"()`);
+  functionCreated = false;
+
+  assert.equal(await prisma.pedidoProduccion.count({ where: { registroExistenciasId: registro.id } }), 1);
+  assert.equal(await prisma.detallePedido.count({ where: { pedidoProduccionId: registro.pedidoProduccion.id } }), 1);
+  assert.equal(await prisma.movimientoBitacora.count({ where: { pedidoProduccionId: registro.pedidoProduccion.id } }), 1);
+  await assert.rejects(prisma.pedidoProduccion.create({ data: {
+    clienteId, repartidorId, registroExistenciasId: registro.id,
+  } }), { code: 'P2002' });
+  await assert.rejects(prisma.pedidoProduccion.create({ data: {
+    clienteId, repartidorId, registroExistenciasId: -1,
+  } }), { code: 'P2003' });
+  await assert.rejects(prisma.detallePedido.create({ data: {
+    pedidoProduccionId: registro.pedidoProduccion.id, saborId, presentacionId: litro.id,
+    cantidadSugerida: -1, cantidadSolicitada: 0,
+  } }), (error) => { assert.match(String(error), /DetallePedido_cantidadSugerida_check/); return true; });
+  await assert.rejects(prisma.detallePedido.create({ data: {
+    pedidoProduccionId: registro.pedidoProduccion.id, saborId, presentacionId: litro.id,
+    cantidadSugerida: 0, cantidadSolicitada: -1,
+  } }), (error) => { assert.match(String(error), /DetallePedido_cantidadSolicitada_check/); return true; });
+  await assert.rejects(prisma.detallePedido.create({ data: {
+    pedidoProduccionId: registro.pedidoProduccion.id, saborId: -1, presentacionId: litro.id,
+    cantidadSugerida: 1, cantidadSolicitada: 1,
+  } }), { code: 'P2003' });
+  await assert.rejects(prisma.movimientoBitacora.create({ data: {
+    clienteId, repartidorId, tipo: 'PEDIDO_PRODUCCION', pedidoProduccionId: -1,
+  } }), { code: 'P2003' });
+  await assert.rejects(prisma.$executeRaw`
+    INSERT INTO "MovimientoBitacora" ("clienteId", "repartidorId", "tipo")
+    VALUES (${clienteId}, ${repartidorId}, 'PEDIDO_PRODUCCION'::"TipoMovimiento")
+  `, (error) => { assert.match(String(error), /MovimientoBitacora_referencia_check/); return true; });
+
+  const noOrderResponse = await post([item(litro.id, 0), item(medio.id, 6)]);
+  assert.equal(noOrderResponse.status, 201);
+  const noOrder = await noOrderResponse.json();
+  assert.equal(noOrder.requiereProduccion, false);
+  assert.equal(noOrder.pedidoProduccion, null);
+  assert.equal(await prisma.pedidoProduccion.count({ where: { registroExistenciasId: noOrder.id } }), 0);
+
+  for (const [table, condition] of [
+    ['PedidoProduccion', `NEW."clienteId" = ${clienteId}`],
+    ['DetallePedido', `NEW."saborId" = ${saborId}`],
+    ['MovimientoBitacora', `NEW."clienteId" = ${clienteId} AND NEW."tipo" = 'PEDIDO_PRODUCCION'`],
+  ]) {
+    const before = {
+      registros: await prisma.registroExistencias.count({ where: { clienteId } }),
+      pedidos: await prisma.pedidoProduccion.count({ where: { clienteId } }),
+      detalles: await prisma.detallePedido.count({ where: { pedidoProduccion: { clienteId } } }),
+      movimientos: await prisma.movimientoBitacora.count({ where: { clienteId } }),
+    };
+    await prisma.$executeRawUnsafe(`CREATE FUNCTION "${orderFunctionName}"() RETURNS trigger AS $$
+      BEGIN
+        IF ${condition} THEN RAISE EXCEPTION 'Fallo de pedido de verificación'; END IF;
+        RETURN NEW;
+      END;
+    $$ LANGUAGE plpgsql`);
+    orderFunctionCreated = true;
+    await prisma.$executeRawUnsafe(`CREATE TRIGGER "${orderTriggerName}" BEFORE INSERT ON "${table}"
+      FOR EACH ROW EXECUTE FUNCTION "${orderFunctionName}"()`);
+    orderTriggerTable = table;
+    assert.equal((await post(allZero)).status, 500, `${table}: el fallo debe cancelar el POST`);
+    assert.deepEqual({
+      registros: await prisma.registroExistencias.count({ where: { clienteId } }),
+      pedidos: await prisma.pedidoProduccion.count({ where: { clienteId } }),
+      detalles: await prisma.detallePedido.count({ where: { pedidoProduccion: { clienteId } } }),
+      movimientos: await prisma.movimientoBitacora.count({ where: { clienteId } }),
+    }, before, `${table}: snapshot, pedido, detalles y bitácora deben revertirse juntos`);
+    await prisma.$executeRawUnsafe(`DROP TRIGGER "${orderTriggerName}" ON "${table}"`);
+    orderTriggerTable = undefined;
+    await prisma.$executeRawUnsafe(`DROP FUNCTION "${orderFunctionName}"()`);
+    orderFunctionCreated = false;
+  }
+
+  console.log('Existencias y PedidoProduccion verificados en PostgreSQL real: cálculo, ausencia de pedido vacío, unicidad, FK, CHECK y rollback.');
 } catch (error) {
   console.error(error);
   process.exitCode = 1;
 } finally {
+  if (orderTriggerTable) await prisma.$executeRawUnsafe(`DROP TRIGGER "${orderTriggerName}" ON "${orderTriggerTable}"`);
+  if (orderFunctionCreated) await prisma.$executeRawUnsafe(`DROP FUNCTION "${orderFunctionName}"()`);
   if (triggerCreated) await prisma.$executeRawUnsafe(`DROP TRIGGER "${triggerName}" ON "MovimientoBitacora"`);
   if (functionCreated) await prisma.$executeRawUnsafe(`DROP FUNCTION "${functionName}"()`);
   if (clienteId) {
     await prisma.movimientoBitacora.deleteMany({ where: { clienteId } });
+    await prisma.detallePedido.deleteMany({ where: { pedidoProduccion: { clienteId } } });
+    await prisma.pedidoProduccion.deleteMany({ where: { clienteId } });
     await prisma.detalleExistencias.deleteMany({ where: { registroExistencias: { clienteId } } });
     await prisma.registroExistencias.deleteMany({ where: { clienteId } });
     await prisma.stockObjetivo.deleteMany({ where: { clienteId } });

@@ -20,6 +20,7 @@ model Cliente {
   visitasCliente VisitaCliente[]
   registrosExistencias RegistroExistencias[]
   movimientosBitacora MovimientoBitacora[]
+  pedidosProduccion PedidoProduccion[]
 }
 
 model Repartidor {
@@ -31,6 +32,7 @@ model Repartidor {
   visitasCliente VisitaCliente[]
   registrosExistencias RegistroExistencias[]
   movimientosBitacora MovimientoBitacora[]
+  pedidosProduccion PedidoProduccion[]
 }
 
 model Sabor {
@@ -42,6 +44,7 @@ model Sabor {
   presentaciones SaborPresentacion[]
   stockObjetivos StockObjetivo[]
   detallesExistencias DetalleExistencias[]
+  detallesPedido DetallePedido[]
 }
 
 model Presentacion {
@@ -53,6 +56,7 @@ model Presentacion {
   sabores           SaborPresentacion[]
   stockObjetivos    StockObjetivo[]
   detallesExistencias DetalleExistencias[]
+  detallesPedido DetallePedido[]
 }
 
 model SaborPresentacion {
@@ -110,6 +114,7 @@ model RegistroExistencias {
   visitaCliente VisitaCliente?      @relation(fields: [visitaClienteId, clienteId, repartidorId], references: [id, clienteId, repartidorId], onDelete: Restrict)
   detalles    DetalleExistencias[]
   movimiento  MovimientoBitacora?
+  pedidoProduccion PedidoProduccion?
 
   @@index([clienteId, createdAt])
 }
@@ -126,6 +131,32 @@ model DetalleExistencias {
   @@id([registroExistenciasId, saborId, presentacionId])
 }
 
+model PedidoProduccion {
+  id                    Int @id @default(autoincrement())
+  clienteId             Int
+  repartidorId          Int
+  registroExistenciasId Int @unique
+  createdAt             DateTime @default(now())
+  cliente               Cliente @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  repartidor            Repartidor @relation(fields: [repartidorId], references: [id], onDelete: Restrict)
+  registroExistencias   RegistroExistencias @relation(fields: [registroExistenciasId], references: [id], onDelete: Restrict)
+  detalles              DetallePedido[]
+  movimiento            MovimientoBitacora?
+}
+
+model DetallePedido {
+  pedidoProduccionId Int
+  saborId            Int
+  presentacionId     Int
+  cantidadSugerida   Int
+  cantidadSolicitada Int
+  pedidoProduccion   PedidoProduccion @relation(fields: [pedidoProduccionId], references: [id], onDelete: Restrict)
+  sabor              Sabor @relation(fields: [saborId], references: [id], onDelete: Restrict)
+  presentacion       Presentacion @relation(fields: [presentacionId], references: [id], onDelete: Restrict)
+
+  @@id([pedidoProduccionId, saborId, presentacionId])
+}
+
 model MovimientoBitacora {
   id                    Int                  @id @default(autoincrement())
   clienteId             Int
@@ -137,4 +168,5 @@ model MovimientoBitacora {
   cliente               Cliente              @relation(fields: [clienteId], references: [id], onDelete: Restrict)
   repartidor            Repartidor           @relation(fields: [repartidorId], references: [id], onDelete: Restrict)
   registroExistencias   RegistroExistencias? @relation(fields: [registroExistenciasId], references: [id], onDelete: Restrict)
+  pedidoProduccion      PedidoProduccion? @relation(fields: [pedidoProduccionId], references: [id], onDelete: Restrict)
 }

@@ -14,8 +14,28 @@ class DetalleExistenciasResponseDto {
 
 class MovimientoResumenDto {
   @ApiProperty() id!: number;
-  @ApiProperty({ enum: ['REGISTRO_EXISTENCIAS'] }) tipo!: string;
+  @ApiProperty({ enum: ['REGISTRO_EXISTENCIAS', 'PEDIDO_PRODUCCION'] }) tipo!: string;
   @ApiProperty({ type: String, format: 'date-time' }) createdAt!: Date;
+}
+
+class DetallePedidoResponseDto {
+  @ApiProperty() pedidoProduccionId!: number;
+  @ApiProperty() saborId!: number;
+  @ApiProperty() presentacionId!: number;
+  @ApiProperty({ minimum: 0 }) cantidadSugerida!: number;
+  @ApiProperty({ minimum: 0 }) cantidadSolicitada!: number;
+  @ApiProperty({ type: PersonaResumenDto }) sabor!: PersonaResumenDto;
+  @ApiProperty({ type: PersonaResumenDto }) presentacion!: PersonaResumenDto;
+}
+
+class PedidoProduccionResponseDto {
+  @ApiProperty() id!: number;
+  @ApiProperty() clienteId!: number;
+  @ApiProperty() repartidorId!: number;
+  @ApiProperty() registroExistenciasId!: number;
+  @ApiProperty({ type: String, format: 'date-time' }) createdAt!: Date;
+  @ApiProperty({ type: [DetallePedidoResponseDto] }) detalles!: DetallePedidoResponseDto[];
+  @ApiProperty({ type: MovimientoResumenDto }) movimiento!: MovimientoResumenDto;
 }
 
 export class RegistroExistenciasResponseDto {
@@ -28,4 +48,8 @@ export class RegistroExistenciasResponseDto {
   @ApiProperty({ type: PersonaResumenDto }) repartidor!: PersonaResumenDto;
   @ApiProperty({ type: [DetalleExistenciasResponseDto] }) detalles!: DetalleExistenciasResponseDto[];
   @ApiProperty({ type: MovimientoResumenDto }) movimiento!: MovimientoResumenDto;
+  @ApiProperty({ type: PedidoProduccionResponseDto, nullable: true,
+    description: 'Nulo cuando ninguna combinación requiere producción o en registros históricos previos' })
+  pedidoProduccion!: PedidoProduccionResponseDto | null;
+  @ApiProperty({ description: 'Indica si se generó automáticamente un pedido' }) requiereProduccion!: boolean;
 }

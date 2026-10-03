@@ -10,7 +10,7 @@ export class ExistenciasController {
   constructor(private readonly existencias: ExistenciasService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Guardar un snapshot completo de existencias y su movimiento de bitácora' })
+  @ApiOperation({ summary: 'Guardar existencias y generar automáticamente un pedido cuando haya faltantes' })
   @ApiCreatedResponse({ type: RegistroExistenciasResponseDto })
   @ApiBadRequestResponse({ description: 'Visita inconsistente, captura incompleta, surtido cambiado o catálogo inactivo' })
   @ApiNotFoundResponse({ description: 'Cliente, repartidor o visita no encontrado' })

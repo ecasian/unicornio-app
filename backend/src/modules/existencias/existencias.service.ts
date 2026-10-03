@@ -9,6 +9,15 @@ const registroDetails = {
   repartidor: { select: { id: true, nombre: true } },
   detalles: { orderBy: [{ saborId: 'asc' }, { presentacionId: 'asc' }] },
   movimiento: { select: { id: true, tipo: true, createdAt: true } },
+  pedidoProduccion: {
+    include: {
+      detalles: {
+        include: { sabor: { select: { id: true, nombre: true } }, presentacion: { select: { id: true, nombre: true } } },
+        orderBy: [{ saborId: 'asc' }, { presentacionId: 'asc' }],
+      },
+      movimiento: { select: { id: true, tipo: true, createdAt: true } },
+    },
+  },
 } satisfies Prisma.RegistroExistenciasInclude;
 
 @Injectable()
@@ -25,7 +34,7 @@ export class ExistenciasService {
     if (!registro || registro.clienteId !== clienteId) {
       throw new NotFoundException('Registro de existencias no encontrado');
     }
-    return registro;
+    return { ...registro, requiereProduccion: registro.pedidoProduccion !== null };
   }
 
   async create(clienteId: number, data: CreateRegistroExistenciasDto) {
@@ -81,14 +90,39 @@ export class ExistenciasService {
           clienteId, repartidorId: data.repartidorId, visitaClienteId: visita.id, createdAt,
           detalles: { create: data.existencias.map(({ saborId, presentacionId, cantidad }) => ({ saborId, presentacionId, cantidad })) },
         },
+        include: { detalles: true },
       });
+      const objetivos = new Map(operativo.map((item) => [`${item.saborId}:${item.presentacionId}`, item.cantidad]));
+      const faltantes = registro.detalles.flatMap(({ saborId, presentacionId, cantidad }) => {
+        const objetivo = objetivos.get(`${saborId}:${presentacionId}`);
+        if (objetivo === undefined) throw new Error('Detalle fuera del surtido validado');
+        const cantidadNecesaria = Math.max(objetivo - cantidad, 0);
+        return cantidadNecesaria > 0
+          ? [{ saborId, presentacionId, cantidadSugerida: cantidadNecesaria, cantidadSolicitada: cantidadNecesaria }]
+          : [];
+      });
+      if (faltantes.length > 0) {
+        const pedido = await transaction.pedidoProduccion.create({
+          data: {
+            clienteId, repartidorId: data.repartidorId, registroExistenciasId: registro.id, createdAt,
+            detalles: { create: faltantes },
+          },
+        });
+        await transaction.movimientoBitacora.create({
+          data: {
+            clienteId, repartidorId: data.repartidorId, tipo: TipoMovimiento.PEDIDO_PRODUCCION,
+            pedidoProduccionId: pedido.id, createdAt,
+          },
+        });
+      }
       await transaction.movimientoBitacora.create({
         data: {
           clienteId, repartidorId: data.repartidorId, tipo: TipoMovimiento.REGISTRO_EXISTENCIAS,
           registroExistenciasId: registro.id, createdAt,
         },
       });
-      return transaction.registroExistencias.findUniqueOrThrow({ where: { id: registro.id }, include: registroDetails });
+      const complete = await transaction.registroExistencias.findUniqueOrThrow({ where: { id: registro.id }, include: registroDetails });
+      return { ...complete, requiereProduccion: complete.pedidoProduccion !== null };
     }, { maxWait: 15000, timeout: 15000 });
   }
 }

@@ -186,6 +186,20 @@ export function RepartidorInicioPage() {
                 <p>Repartidor: {registro.repartidor.nombre}</p>
                 <p>Fecha y hora: {new Date(registro.createdAt).toLocaleString('es-MX')}</p>
                 <p>Combinaciones registradas: {registro.detalles.length}</p>
+                {registro.pedidoProduccion ? (
+                  <div className="mt-5 border-t border-green-300 pt-4">
+                    <p className="font-bold">Pedido enviado automáticamente a producción</p>
+                    <p className="mt-1">Pedido #{registro.pedidoProduccion.id}</p>
+                    <ul className="mt-3 space-y-2" aria-label="Cantidades a producir">
+                      {registro.pedidoProduccion.detalles.map((detalle) => (
+                        <li key={`${detalle.saborId}:${detalle.presentacionId}`} className="flex flex-wrap justify-between gap-2">
+                          <span>{detalle.sabor.nombre} · {detalle.presentacion.nombre}</span>
+                          <strong>{detalle.cantidadSolicitada} envases</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : <p className="mt-4 font-bold">Este cliente no requiere producción.</p>}
               </div>
             ) : captureStock ? (
               <>

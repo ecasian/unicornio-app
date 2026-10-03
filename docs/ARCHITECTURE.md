@@ -34,11 +34,11 @@ docs/                  decisiones y referencias del producto
 | Visitas | Registra la llegada del repartidor al cliente antes del levantamiento. |
 | Existencias | Captura y consulta de snapshots completos e históricos. |
 | Reposición (futura) | Cálculo derivado del objetivo y la existencia vigente; no persiste una entidad `Reposicion`. |
-| Pedidos a producción (futuro) | Creación automática con la cantidad necesaria y consulta. |
+| Pedidos a producción | Creación automática con la cantidad necesaria al guardar existencias. |
 | Bitácora | Registro automático y consulta de movimientos. |
 
 Las experiencias previstas son `/admin`, `/repartidor` y, en un slice futuro,
-`/produccion`. Esta rama solo incorpora la llegada al flujo `/repartidor`.
+`/produccion`. Este slice agrega el pedido automático al guardar existencias.
 
 El botón «Sucursales» permanece visible e inactivo. No tiene modelo, API ni
 lógica. «Registro de ventas» en los mockups se interpreta como Bitácora/Historial
@@ -55,10 +55,10 @@ de movimientos, sin ventas contables.
 | `SaborPresentacion` | `saborId`, `presentacionId`, `habilitada`, `createdAt`, `updatedAt` | Una combinación única por sabor y presentación. |
 | `StockObjetivo` | `clienteId`, `saborId`, `presentacionId`, `cantidad`, `createdAt`, `updatedAt` | Una combinación única por cliente, sabor y presentación; su existencia define el surtido configurado. |
 | `VisitaCliente` | `id`, `clienteId`, `repartidorId`, `llegadaAt` | Llegada con hora generada por la BD; puede tener varios snapshots. No registra salida ni ubicación. |
-| `RegistroExistencias` | `id`, `clienteId`, `repartidorId`, `visitaClienteId`, `createdAt` | Cabecera inmutable de un snapshot; tiene detalles y, en el futuro, pedido. La visita es obligatoria en escrituras nuevas y nullable en BD para conservar históricos previos. |
+| `RegistroExistencias` | `id`, `clienteId`, `repartidorId`, `visitaClienteId`, `createdAt` | Cabecera inmutable de un snapshot; tiene detalles y puede originar un pedido. La visita es obligatoria en escrituras nuevas y nullable en BD para conservar históricos previos. |
 | `DetalleExistencias` | `registroExistenciasId`, `saborId`, `presentacionId`, `cantidad` | Una fila por combinación operable; hereda la fecha/hora de su cabecera. |
-| `PedidoProduccion` | `id`, `clienteId`, `repartidorId`, `registroExistenciasId`, `createdAt` | Referencia obligatoria y única al snapshot más reciente; tiene detalles. `createdAt` es la fecha/hora del pedido. |
-| `DetallePedido` (futuro) | `pedidoProduccionId`, `saborId`, `presentacionId`, `cantidadNecesaria` | Una fila por combinación del pedido; hereda la fecha/hora de su cabecera. La cantidad se deriva del objetivo y la existencia vigente. |
+| `PedidoProduccion` | `id`, `clienteId`, `repartidorId`, `registroExistenciasId`, `createdAt` | Referencia obligatoria y única al snapshot que lo originó; tiene detalles. Solo se crea si existe algún faltante positivo. `createdAt` es la fecha/hora del pedido. |
+| `DetallePedido` | `pedidoProduccionId`, `saborId`, `presentacionId`, `cantidadSugerida`, `cantidadSolicitada` | Una fila por faltante positivo; hereda la fecha/hora de su cabecera. Ambas cantidades son iguales en este slice. |
 | `MovimientoBitacora` | `id`, `clienteId`, `repartidorId`, `createdAt`, `tipo`, `registroExistenciasId` nullable, `pedidoProduccionId` nullable | `createdAt` es la fecha/hora del movimiento. Exactamente una referencia, según `tipo`. |
 
 Para `REGISTRO_EXISTENCIAS`, solo `registroExistenciasId` tiene valor; para
@@ -83,10 +83,12 @@ entidades porque su resultado se calcula y no se persiste.
 4. Las cantidades son enteros no negativos. Antes de un levantamiento operativo
    se registra una visita del mismo cliente y repartidor. La BD fija
    `llegadaAt`; el celular no la envía. No hay salida, GPS, rutas ni tracking.
-5. En un slice futuro, guardar existencias generará automáticamente el pedido.
-   Para cada combinación se calculará
-   `cantidadNecesaria = max(stockObjetivo - existenciaVigente, 0)`.
-   No habrá edición libre de cantidades de producción que rompa esa igualdad.
+5. Guardar existencias genera automáticamente un pedido si alguna combinación
+   necesita producción. Para cada una se calcula
+   `cantidadNecesaria = max(stockObjetivo - existenciaActual, 0)`; solo se
+   persisten detalles con faltante positivo. Si todos son cero, se conserva el
+   snapshot sin pedido. `cantidadSugerida` y `cantidadSolicitada` coinciden en
+   este slice. No hay edición libre de cantidades de producción.
 6. Una corrección futura de existencias creará otra versión: registro original
    → corregido → vigente. No sobrescribirá históricos. El pedido futuro deberá
    recalcularse para coincidir con objetivo menos la existencia vigente.
@@ -109,7 +111,7 @@ de 1 L y 1/2 L; no se crean tamaños adicionales durante el MVP.
 
 **Repartidor:** selecciona manualmente un repartidor activo y un cliente activo;
 consulta objetivos, marca su llegada y registra existencias. No crea sabores ni
-movimientos de bitácora de forma manual. Los pedidos automáticos son futuros.
+movimientos de bitácora de forma manual. El pedido nace al guardar el snapshot.
 
 **Producción (futura):** `/produccion` consultará por defecto los levantamientos
 del día anterior: normalmente lo levantado el día D se produce la mañana del
@@ -138,6 +140,10 @@ autenticación.
    y siguen siendo legibles. Nunca se sobrescriben.
 6. En la misma transacción crea un movimiento `REGISTRO_EXISTENCIAS` con
    cliente, repartidor, fecha/hora y referencia al snapshot.
+7. Calcula faltantes con el objetivo validado y los detalles persistidos. Si
+   alguno es positivo, crea pedido, detalles y movimiento `PEDIDO_PRODUCCION`
+   en la misma transacción. Los históricos anteriores no se completan
+   retroactivamente.
 
 ## Flujo objetivo Reparto → Producción (futuro)
 
@@ -146,13 +152,13 @@ llegada → capturar existencias → guardar levantamiento → calcular faltante
 crear pedido automáticamente → permitir corrección versionada si hubo error →
 Producción consulta al día siguiente por tienda y en consolidado.
 
-En esta rama el flujo termina al guardar el snapshot ligado a la visita.
-PedidoProduccion, correcciones y `/produccion` aún no están implementados.
+En esta rama el flujo termina con el pedido automático, cuando es necesario,
+y la confirmación al repartidor. Correcciones y `/produccion` quedan pendientes.
 
 ## Bitácora automática
 
 Los movimientos previstos son `REGISTRO_EXISTENCIAS` y `PEDIDO_PRODUCCION`.
-Actualmente solo se crea el primero. `VisitaCliente` es la fuente de verdad
+El segundo se crea solo si hubo faltantes. `VisitaCliente` es la fuente de verdad
 de la llegada y no genera un movimiento adicional. La bitácora se consulta
 desde Administrador en un slice futuro y sus entradas
 se crean únicamente como efecto de guardar correctamente el registro o pedido

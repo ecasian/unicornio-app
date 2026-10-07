@@ -80,6 +80,9 @@ export function RepartidorInicioPage() {
   const [visita, setVisita] = useState<VisitaCliente | null>(null);
   const [captureStock, setCaptureStock] = useState<StockObjetivo[] | null>(null);
   const [registro, setRegistro] = useState<RegistroExistencias | null>(null);
+  const [corrigiendo, setCorrigiendo] = useState(false);
+  const [correccionGuardada, setCorreccionGuardada] = useState(false);
+  const [pedidoAnterior, setPedidoAnterior] = useState(false);
   const clienteHeading = useRef<HTMLHeadingElement>(null);
   const surtidoHeading = useRef<HTMLHeadingElement>(null);
   const llegadaHeading = useRef<HTMLHeadingElement>(null);
@@ -107,14 +110,19 @@ export function RepartidorInicioPage() {
       existenciasApi.create(clientId, driverId, visitId, items),
     onSuccess: setRegistro,
   });
+  const corregir = useMutation({
+    mutationFn: ({ clientId, registroId, items }: { clientId: number; registroId: number; items: ExistenciaItem[]; hadOrder: boolean }) =>
+      existenciasApi.correct(clientId, registroId, items),
+    onSuccess: (nuevo, variables) => { setRegistro(nuevo); setCorrigiendo(false); setCorreccionGuardada(true); setPedidoAnterior(variables.hadOrder); void stock.refetch(); },
+  });
   const paso = !repartidor ? 1 : !cliente ? 2 : captureStock || registro ? 5 : visitaActual ? 4 : 3;
 
   function cambiarRepartidor() {
-    setRepartidorId(null); setClienteId(null); setVisita(null); setCaptureStock(null); setRegistro(null); llegada.reset(); guardar.reset();
+    setRepartidorId(null); setClienteId(null); setVisita(null); setCaptureStock(null); setRegistro(null); setCorrigiendo(false); setCorreccionGuardada(false); setPedidoAnterior(false); llegada.reset(); guardar.reset(); corregir.reset();
   }
 
   function cambiarCliente() {
-    setClienteId(null); setVisita(null); setCaptureStock(null); setRegistro(null); llegada.reset(); guardar.reset();
+    setClienteId(null); setVisita(null); setCaptureStock(null); setRegistro(null); setCorrigiendo(false); setCorreccionGuardada(false); setPedidoAnterior(false); llegada.reset(); guardar.reset(); corregir.reset();
   }
 
   function registrarLlegada(clientId: number, driverId: number) {
@@ -157,7 +165,7 @@ export function RepartidorInicioPage() {
               : clientes.isError ? <Notice message={`No se pudieron cargar los clientes: ${clientes.error.message}`} onRetry={() => { void clientes.refetch(); }} />
               : clientes.data.filter((item) => item.activo).length === 0 ? <p className="rounded-2xl bg-white p-5">No hay clientes activos disponibles.</p>
               : <ul className="space-y-3">{clientes.data.filter((item) => item.activo).map((item) => <li key={item.id}>
-                <button type="button" aria-label={`Seleccionar cliente ${item.nombre}. Dirección: ${item.direccion}`} onClick={() => { setClienteId(item.id); setVisita(null); setCaptureStock(null); setRegistro(null); llegada.reset(); guardar.reset(); }}
+                <button type="button" aria-label={`Seleccionar cliente ${item.nombre}. Dirección: ${item.direccion}`} onClick={() => { setClienteId(item.id); setVisita(null); setCaptureStock(null); setRegistro(null); setCorrigiendo(false); setCorreccionGuardada(false); setPedidoAnterior(false); llegada.reset(); guardar.reset(); corregir.reset(); }}
                   className="block min-h-24 w-full rounded-2xl bg-white px-5 py-4 text-left shadow-sm focus-visible:outline-4 focus-visible:outline-fuchsia-600">
                   <span className="block text-lg font-bold">{item.nombre}</span>
                   <span className="mt-2 block text-sm text-slate-600">Celular: {item.celular}</span>
@@ -168,8 +176,8 @@ export function RepartidorInicioPage() {
         ) : (
           <section aria-labelledby="resumen-surtido" className="space-y-4">
             <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm font-semibold text-fuchsia-800">
-              <button type="button" disabled={guardar.isPending || llegada.isPending} onClick={cambiarRepartidor} className="min-h-11 underline underline-offset-4 disabled:opacity-50">← Cambiar repartidor</button>
-              <button type="button" disabled={guardar.isPending || llegada.isPending} onClick={cambiarCliente} className="min-h-11 underline underline-offset-4 disabled:opacity-50">← Cambiar cliente</button>
+              <button type="button" disabled={guardar.isPending || corregir.isPending || llegada.isPending} onClick={cambiarRepartidor} className="min-h-11 underline underline-offset-4 disabled:opacity-50">← Cambiar repartidor</button>
+              <button type="button" disabled={guardar.isPending || corregir.isPending || llegada.isPending} onClick={cambiarCliente} className="min-h-11 underline underline-offset-4 disabled:opacity-50">← Cambiar cliente</button>
             </div>
             <p className="text-sm text-slate-600">Repartidor: <strong>{repartidor.nombre}</strong></p>
             {registro ? <h2 id="resumen-surtido" ref={capturaHeading} tabIndex={-1} className="text-2xl font-bold">Existencias guardadas</h2>
@@ -179,16 +187,31 @@ export function RepartidorInicioPage() {
               <p><strong>Celular:</strong> {cliente.celular}</p>
               <p className="mt-1"><strong>Dirección:</strong> {cliente.direccion}</p>
             </div>
-            {registro ? (
+            {registro && corrigiendo ? (
+              <>
+                <button type="button" disabled={corregir.isPending} onClick={() => { setCorrigiendo(false); corregir.reset(); }}
+                  className="min-h-11 font-semibold text-fuchsia-800 underline underline-offset-4 disabled:opacity-50">← Volver al registro</button>
+                <h3 className="text-lg font-bold">Corregir existencias del registro #{registro.id}</h3>
+                <p className="text-sm text-slate-600">Se conservará el registro original y se recalculará el pedido con las cantidades corregidas.</p>
+                {stock.isError && <Notice message={`No se pudo comprobar el surtido actual: ${stock.error.message}`} onRetry={() => { void stock.refetch(); }} />}
+                <ExistenciasForm key={`correccion-${registro.id}`} initialStock={[]} currentStock={stock.data ?? []}
+                  correctionDetails={registro.detalles} initialValues={registro.detalles} submitLabel="Guardar corrección" isSaving={corregir.isPending}
+                  isStockUnavailable={stock.isPending || stock.isFetching || stock.isError}
+                  saveError={corregir.error?.message ?? null}
+                  onSave={(items) => corregir.mutate({ clientId: cliente.id, registroId: registro.id, items, hadOrder: Boolean(registro.pedidoProduccion) })}
+                  onReload={() => { setCorrigiendo(false); void stock.refetch(); corregir.reset(); }} />
+              </>
+            ) : registro ? (
               <div role="status" className="rounded-2xl border border-green-200 bg-green-50 p-5 text-green-950">
-                <p className="text-lg font-bold">Registro de existencias guardado correctamente</p>
+                <p className="text-lg font-bold">{correccionGuardada ? 'Corrección guardada correctamente' : 'Registro de existencias guardado correctamente'}</p>
+                {registro.corrigeRegistroExistenciasId && <p>Corrige el registro #{registro.corrigeRegistroExistenciasId}</p>}
                 <p className="mt-2">Cliente: {registro.cliente.nombre}</p>
                 <p>Repartidor: {registro.repartidor.nombre}</p>
                 <p>Fecha y hora: {new Date(registro.createdAt).toLocaleString('es-MX')}</p>
                 <p>Combinaciones registradas: {registro.detalles.length}</p>
                 {registro.pedidoProduccion ? (
                   <div className="mt-5 border-t border-green-300 pt-4">
-                    <p className="font-bold">Pedido enviado automáticamente a producción</p>
+                    <p className="font-bold">{correccionGuardada && pedidoAnterior ? 'Pedido actualizado para producción' : 'Pedido enviado automáticamente a producción'}</p>
                     <p className="mt-1">Pedido #{registro.pedidoProduccion.id}</p>
                     <ul className="mt-3 space-y-2" aria-label="Cantidades a producir">
                       {registro.pedidoProduccion.detalles.map((detalle) => (
@@ -199,7 +222,9 @@ export function RepartidorInicioPage() {
                       ))}
                     </ul>
                   </div>
-                ) : <p className="mt-4 font-bold">Este cliente no requiere producción.</p>}
+                ) : <div className="mt-4 font-bold">{correccionGuardada && pedidoAnterior && <p>El pedido anterior fue sustituido.</p>}<p>Este cliente no requiere producción.</p></div>}
+                {registro.vigente !== false && <button type="button" onClick={() => { setCorrigiendo(true); corregir.reset(); void stock.refetch(); }}
+                  className="mt-5 min-h-12 w-full rounded-full bg-fuchsia-700 px-6 font-bold text-white">Corregir existencias</button>}
               </div>
             ) : captureStock ? (
               <>

@@ -138,20 +138,24 @@ nunca se sobrescriben.
 
 ## Reposición
 
-La cantidad necesaria para el futuro pedido se obtiene mediante:
+La cantidad necesaria para el pedido se obtiene mediante:
 
 `max(stockObjetivo - existenciaActual, 0)`
 
 La reposición es un cálculo de dominio derivado de `StockObjetivo` y
-`RegistroExistencias` vigente; no es una entidad persistente. El futuro
+`RegistroExistencias` vigente; no es una entidad persistente. El
 `PedidoProduccion` se genera automáticamente al guardar el levantamiento
 vigente. No se permite modificar libremente la cantidad de producción de
 forma que rompa su relación con `StockObjetivo` y la existencia vigente.
 
 Si hubo un error en la captura, se crea una corrección versionada de
 existencias. El registro original permanece en el histórico y el corregido
-pasa a ser vigente. Después de la corrección, el futuro pedido debe
+pasa a ser vigente. Después de la corrección, el pedido debe
 recalcularse usando la existencia vigente.
+Cada corrección crea un nuevo `RegistroExistencias` inmutable y solo puede
+corregirse el último registro de su cadena. Los pedidos anteriores se
+conservan como `SUSTITUIDO`; el nuevo pedido, si hay faltantes, queda
+`VIGENTE`. La futura vista `/produccion` consultará solo pedidos vigentes.
 
 ## Producción
 

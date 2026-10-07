@@ -10,6 +10,8 @@ class DetalleExistenciasResponseDto {
   @ApiProperty() saborId!: number;
   @ApiProperty() presentacionId!: number;
   @ApiProperty({ minimum: 0 }) cantidad!: number;
+  @ApiProperty({ type: PersonaResumenDto }) sabor!: PersonaResumenDto;
+  @ApiProperty({ type: PersonaResumenDto }) presentacion!: PersonaResumenDto;
 }
 
 class MovimientoResumenDto {
@@ -33,6 +35,7 @@ class PedidoProduccionResponseDto {
   @ApiProperty() clienteId!: number;
   @ApiProperty() repartidorId!: number;
   @ApiProperty() registroExistenciasId!: number;
+  @ApiProperty({ enum: ['VIGENTE', 'SUSTITUIDO'] }) estado!: string;
   @ApiProperty({ type: String, format: 'date-time' }) createdAt!: Date;
   @ApiProperty({ type: [DetallePedidoResponseDto] }) detalles!: DetallePedidoResponseDto[];
   @ApiProperty({ type: MovimientoResumenDto }) movimiento!: MovimientoResumenDto;
@@ -43,6 +46,9 @@ export class RegistroExistenciasResponseDto {
   @ApiProperty() clienteId!: number;
   @ApiProperty() repartidorId!: number;
   @ApiProperty({ nullable: true, description: 'Nulo solo para registros anteriores a VisitaCliente' }) visitaClienteId!: number | null;
+  @ApiProperty({ nullable: true }) corrigeRegistroExistenciasId!: number | null;
+  @ApiProperty({ nullable: true }) corregidoPorRegistroExistenciasId!: number | null;
+  @ApiProperty() vigente!: boolean;
   @ApiProperty({ type: String, format: 'date-time' }) createdAt!: Date;
   @ApiProperty({ type: PersonaResumenDto }) cliente!: PersonaResumenDto;
   @ApiProperty({ type: PersonaResumenDto }) repartidor!: PersonaResumenDto;

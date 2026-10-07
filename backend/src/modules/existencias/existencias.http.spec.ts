@@ -53,7 +53,10 @@ const repository = {
     findUnique: async ({ where }: { where: { id: number } }) => {
       const row = registros.find((item) => item.id === where.id);
       const pedido = pedidos.find((item) => item.registroExistenciasId === row?.id);
-      return row ? { ...row, cliente, repartidor, movimiento: movimientos.find((item) => item.registroExistenciasId === row.id) ?? null,
+      return row ? { ...row, detalles: row.detalles.map((detail) => ({ ...detail, sabor,
+        presentacion: detail.presentacionId === 4 ? litro : medio })), cliente, repartidor,
+        movimiento: movimientos.find((item) => item.registroExistenciasId === row.id) ?? null,
+        corregidoPor: registros.find((item) => (item as Registro & { corrigeRegistroExistenciasId?: number }).corrigeRegistroExistenciasId === row.id) ?? null,
         pedidoProduccion: pedido ? { ...pedido, detalles: pedido.detalles.map((detail) => ({ ...detail, sabor,
           presentacion: detail.presentacionId === 4 ? litro : medio })),
         movimiento: movimientos.find((item) => (item as Movimiento & { pedidoProduccionId?: number }).pedidoProduccionId === pedido.id) } : null } : null;
@@ -70,7 +73,7 @@ const repository = {
       if (failPedido) throw Error('Pedido falló');
       if (failDetallePedido) throw Error('DetallePedido falló');
       const row = { id: pedidos.length + 1, clienteId: data.clienteId, repartidorId: data.repartidorId,
-        registroExistenciasId: data.registroExistenciasId, detalles: data.detalles.create };
+        registroExistenciasId: data.registroExistenciasId, estado: 'VIGENTE', detalles: data.detalles.create };
       pedidos.push(row);
       return row;
     },
@@ -124,8 +127,9 @@ describe('RegistroExistencias HTTP', () => {
   it('creates a complete immutable snapshot with explicit zeros and one automatic movement', async () => {
     const response = await post([item(4, 0), item(5, 0)]);
     expect(response.status).toBe(201);
-    expect(await response.json()).toMatchObject({ clienteId: 1, repartidorId: 2, visitaClienteId: 10, detalles: [
-      { saborId: 3, presentacionId: 4, cantidad: 0 }, { saborId: 3, presentacionId: 5, cantidad: 0 },
+    expect(await response.json()).toMatchObject({ clienteId: 1, repartidorId: 2, visitaClienteId: 10, vigente: true, detalles: [
+      { saborId: 3, presentacionId: 4, cantidad: 0, sabor: { nombre: 'Fresa' }, presentacion: { nombre: '1 litro' } },
+      { saborId: 3, presentacionId: 5, cantidad: 0, sabor: { nombre: 'Fresa' }, presentacion: { nombre: '1/2 litro' } },
     ], movimiento: { tipo: 'REGISTRO_EXISTENCIAS' } });
     expect(registros).toHaveLength(1);
     expect(movimientos).toHaveLength(2);

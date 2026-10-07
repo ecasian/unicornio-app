@@ -17,10 +17,14 @@ export type RegistroExistencias = {
   clienteId: number;
   repartidorId: number;
   visitaClienteId: number | null;
+  corrigeRegistroExistenciasId: number | null;
+  corregidoPorRegistroExistenciasId: number | null;
+  vigente: boolean;
   createdAt: string;
   cliente: { id: number; nombre: string };
   repartidor: { id: number; nombre: string };
-  detalles: (ExistenciaItem & { registroExistenciasId: number })[];
+  detalles: (ExistenciaItem & { registroExistenciasId: number;
+    sabor: { id: number; nombre: string }; presentacion: { id: number; nombre: string } })[];
   movimiento: { id: number; tipo: 'REGISTRO_EXISTENCIAS'; createdAt: string };
   requiereProduccion: boolean;
   pedidoProduccion: {
@@ -28,6 +32,7 @@ export type RegistroExistencias = {
     clienteId: number;
     repartidorId: number;
     registroExistenciasId: number;
+    estado: 'VIGENTE' | 'SUSTITUIDO';
     createdAt: string;
     detalles: DetallePedido[];
     movimiento: { id: number; tipo: 'PEDIDO_PRODUCCION'; createdAt: string };
@@ -42,4 +47,9 @@ export const existenciasApi = {
     }),
   get: (clienteId: number, id: number) =>
     request<RegistroExistencias>(`/clientes/${clienteId}/registros-existencias/${id}`),
+  correct: (clienteId: number, id: number, existencias: ExistenciaItem[]) =>
+    request<RegistroExistencias>(`/clientes/${clienteId}/registros-existencias/${id}/correcciones`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ existencias }),
+    }),
 };

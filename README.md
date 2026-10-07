@@ -81,6 +81,10 @@ registrar un snapshot completo cuando hay surtido operativo y se ha pulsado
 el snapshot se vincula a esa visita. Al guardarlo se crea automáticamente un
 pedido con sus faltantes positivos, si los hay, y los movimientos de bitácora.
 Si no hay faltantes, la confirmación indica que no se requiere producción.
+Si se detecta un error, «Corregir existencias» crea un nuevo snapshot sin
+alterar el anterior. Se conserva el pedido anterior como `SUSTITUIDO` y se
+recalcula uno `VIGENTE` cuando persisten faltantes. Solo el último snapshot de
+la cadena puede corregirse; los registros anteriores continúan consultables.
 Las selecciones se guardan
 solo en memoria durante el flujo actual y se pierden al recargar la página;
 entonces será necesario seleccionar de nuevo y registrar otra llegada.
@@ -95,6 +99,10 @@ npm run lint --prefix frontend
 npm run test --prefix frontend
 npm run build --prefix frontend
 ```
+
+La verificación de correcciones usa exclusivamente el PostgreSQL local definido
+en `.env`: `npm run verify:correcciones-db --prefix backend`. Comprueba la cadena
+de versiones, pedidos, constraints, concurrencia y rollback.
 
 Para validar la configuración de Prisma con `.env` presente:
 

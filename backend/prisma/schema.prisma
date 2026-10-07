@@ -90,6 +90,11 @@ enum TipoMovimiento {
   PEDIDO_PRODUCCION
 }
 
+enum EstadoPedidoProduccion {
+  VIGENTE
+  SUSTITUIDO
+}
+
 model VisitaCliente {
   id            Int                  @id @default(autoincrement())
   clienteId     Int
@@ -108,6 +113,7 @@ model RegistroExistencias {
   clienteId   Int
   repartidorId Int
   visitaClienteId Int?
+  corrigeRegistroExistenciasId Int? @unique
   createdAt   DateTime             @default(now())
   cliente     Cliente              @relation(fields: [clienteId], references: [id], onDelete: Restrict)
   repartidor  Repartidor           @relation(fields: [repartidorId], references: [id], onDelete: Restrict)
@@ -115,6 +121,8 @@ model RegistroExistencias {
   detalles    DetalleExistencias[]
   movimiento  MovimientoBitacora?
   pedidoProduccion PedidoProduccion?
+  corrigeRegistroExistencias RegistroExistencias? @relation("CorreccionesExistencias", fields: [corrigeRegistroExistenciasId], references: [id], onDelete: Restrict)
+  corregidoPor RegistroExistencias? @relation("CorreccionesExistencias")
 
   @@index([clienteId, createdAt])
 }
@@ -137,6 +145,7 @@ model PedidoProduccion {
   repartidorId          Int
   registroExistenciasId Int @unique
   createdAt             DateTime @default(now())
+  estado                EstadoPedidoProduccion @default(VIGENTE)
   cliente               Cliente @relation(fields: [clienteId], references: [id], onDelete: Restrict)
   repartidor            Repartidor @relation(fields: [repartidorId], references: [id], onDelete: Restrict)
   registroExistencias   RegistroExistencias @relation(fields: [registroExistenciasId], references: [id], onDelete: Restrict)

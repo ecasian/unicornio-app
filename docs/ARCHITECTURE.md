@@ -38,7 +38,8 @@ docs/                  decisiones y referencias del producto
 | Bitácora | Registro automático y consulta de movimientos. |
 
 Las experiencias previstas son `/admin`, `/repartidor` y, en un slice futuro,
-`/produccion`. Este slice agrega el pedido automático al guardar existencias.
+`/produccion`. El pedido se crea al guardar existencias y se recalcula al
+corregirlas mediante un nuevo snapshot.
 
 El botón «Sucursales» permanece visible e inactivo. No tiene modelo, API ni
 lógica. «Registro de ventas» en los mockups se interpreta como Bitácora/Historial
@@ -55,9 +56,9 @@ de movimientos, sin ventas contables.
 | `SaborPresentacion` | `saborId`, `presentacionId`, `habilitada`, `createdAt`, `updatedAt` | Una combinación única por sabor y presentación. |
 | `StockObjetivo` | `clienteId`, `saborId`, `presentacionId`, `cantidad`, `createdAt`, `updatedAt` | Una combinación única por cliente, sabor y presentación; su existencia define el surtido configurado. |
 | `VisitaCliente` | `id`, `clienteId`, `repartidorId`, `llegadaAt` | Llegada con hora generada por la BD; puede tener varios snapshots. No registra salida ni ubicación. |
-| `RegistroExistencias` | `id`, `clienteId`, `repartidorId`, `visitaClienteId`, `createdAt` | Cabecera inmutable de un snapshot; tiene detalles y puede originar un pedido. La visita es obligatoria en escrituras nuevas y nullable en BD para conservar históricos previos. |
+| `RegistroExistencias` | `id`, `clienteId`, `repartidorId`, `visitaClienteId`, `corrigeRegistroExistenciasId`, `createdAt` | Cabecera inmutable de un snapshot; la referencia nullable y única enlaza una corrección con su versión anterior sin permitir ramas. La visita es obligatoria en escrituras nuevas y nullable en BD para conservar históricos previos. |
 | `DetalleExistencias` | `registroExistenciasId`, `saborId`, `presentacionId`, `cantidad` | Una fila por combinación operable; hereda la fecha/hora de su cabecera. |
-| `PedidoProduccion` | `id`, `clienteId`, `repartidorId`, `registroExistenciasId`, `createdAt` | Referencia obligatoria y única al snapshot que lo originó; tiene detalles. Solo se crea si existe algún faltante positivo. `createdAt` es la fecha/hora del pedido. |
+| `PedidoProduccion` | `id`, `clienteId`, `repartidorId`, `registroExistenciasId`, `estado`, `createdAt` | Referencia obligatoria y única al snapshot que lo originó; tiene detalles. Solo se crea si existe algún faltante positivo. `estado` es `VIGENTE` o `SUSTITUIDO`; los pedidos anteriores se conservan. |
 | `DetallePedido` | `pedidoProduccionId`, `saborId`, `presentacionId`, `cantidadSugerida`, `cantidadSolicitada` | Una fila por faltante positivo; hereda la fecha/hora de su cabecera. Ambas cantidades son iguales en este slice. |
 | `MovimientoBitacora` | `id`, `clienteId`, `repartidorId`, `createdAt`, `tipo`, `registroExistenciasId` nullable, `pedidoProduccionId` nullable | `createdAt` es la fecha/hora del movimiento. Exactamente una referencia, según `tipo`. |
 
@@ -89,9 +90,13 @@ entidades porque su resultado se calcula y no se persiste.
    persisten detalles con faltante positivo. Si todos son cero, se conserva el
    snapshot sin pedido. `cantidadSugerida` y `cantidadSolicitada` coinciden en
    este slice. No hay edición libre de cantidades de producción.
-6. Una corrección futura de existencias creará otra versión: registro original
-   → corregido → vigente. No sobrescribirá históricos. El pedido futuro deberá
-   recalcularse para coincidir con objetivo menos la existencia vigente.
+6. Una corrección crea otra versión inmutable del snapshot. Solo el último
+   registro de la cadena es vigente y puede corregirse de nuevo. Conserva
+   cliente, repartidor, visita y combinaciones originales; valida el surtido
+   vigente y recalcula faltantes con el objetivo actual en una transacción.
+   El pedido anterior queda `SUSTITUIDO` y se crea uno `VIGENTE` solo si hay
+   faltantes. La futura vista `/produccion` consultará únicamente pedidos
+   `VIGENTE`.
 7. Los totales conservan por separado unidades de 1 L y de 1/2 L. Los litros
    equivalentes se calculan como `unidades1L + unidades500ml * 0.5`.
 8. Una desactivación impide nuevas operaciones con el catálogo desactivado,
@@ -145,15 +150,16 @@ autenticación.
    en la misma transacción. Los históricos anteriores no se completan
    retroactivamente.
 
-## Flujo objetivo Reparto → Producción (futuro)
+## Flujo Reparto → Producción
 
 Repartidor → seleccionarse → seleccionar cliente → marcar «Llegué» → registrar
 llegada → capturar existencias → guardar levantamiento → calcular faltantes →
 crear pedido automáticamente → permitir corrección versionada si hubo error →
 Producción consulta al día siguiente por tienda y en consolidado.
 
-En esta rama el flujo termina con el pedido automático, cuando es necesario,
-y la confirmación al repartidor. Correcciones y `/produccion` quedan pendientes.
+En esta rama el flujo termina con la corrección versionada, el pedido
+recalculado cuando es necesario y la confirmación al repartidor. `/produccion`
+queda pendiente.
 
 ## Bitácora automática
 

@@ -6,6 +6,7 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppRouter } from '../../app/router';
 import type { Cliente } from '../../shared/api/clientes';
+import type { RegistroExistencias } from '../../shared/api/existencias';
 import type { Repartidor } from '../../shared/api/repartidores';
 import type { StockObjetivo } from '../../shared/api/stock-objetivo';
 
@@ -39,6 +40,9 @@ let saveFailure: string | null;
 let arrivalFailure: string | null;
 let delayedArrival: Promise<Response> | null;
 let arrivalId: number;
+let correctionFailure: string | null;
+let correctionCount: number;
+let historicalDetails: Map<number, RegistroExistencias['detalles']>;
 let fetchMock: ReturnType<typeof vi.fn>;
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
@@ -85,11 +89,12 @@ async function renderFlow() {
 }
 
 async function openCapture() {
-  await renderFlow();
+  const queryClient = await renderFlow();
   await click('Seleccionar repartidor Jonathan');
   await click('Seleccionar cliente Punto Fresco');
   await click('Llegué a la tienda');
   await click('Continuar al levantamiento');
+  return queryClient;
 }
 
 beforeEach(() => {
@@ -107,7 +112,37 @@ beforeEach(() => {
   arrivalFailure = null;
   delayedArrival = null;
   arrivalId = 11;
+  correctionFailure = null;
+  correctionCount = 0;
+  historicalDetails = new Map();
   fetchMock = vi.fn(async (resource: string, init?: RequestInit) => {
+    const correctionMatch = resource.match(/\/clientes\/3\/registros-existencias\/(\d+)\/correcciones$/);
+    if (correctionMatch && init?.method === 'POST') {
+      if (correctionFailure) return json({ message: correctionFailure }, 409);
+      const payload = JSON.parse(String(init.body)) as { existencias: { saborId: number; presentacionId: number; cantidad: number }[] };
+      const id = 20 + ++correctionCount;
+      const previous = historicalDetails.get(Number(correctionMatch[1]))!;
+      const detalles = payload.existencias.map((item) => {
+        const label = previous.find((detail) => detail.saborId === item.saborId && detail.presentacionId === item.presentacionId)!;
+        return { ...item, registroExistenciasId: id, sabor: label.sabor, presentacion: label.presentacion };
+      });
+      historicalDetails.set(id, detalles);
+      const detallesPedido = payload.existencias.flatMap((existencia) => {
+        const objetivo = stock.find((item) => item.saborId === existencia.saborId && item.presentacionId === existencia.presentacionId)!;
+        const faltante = Math.max(objetivo.cantidad - existencia.cantidad, 0);
+        return faltante ? [{ pedidoProduccionId: id + 100, saborId: existencia.saborId,
+          presentacionId: existencia.presentacionId, cantidadSugerida: faltante, cantidadSolicitada: faltante,
+          sabor: objetivo.sabor, presentacion: objetivo.presentacion }] : [];
+      });
+      return json({ id, clienteId: 3, repartidorId: 1, visitaClienteId: 11,
+        corrigeRegistroExistenciasId: Number(correctionMatch[1]), corregidoPorRegistroExistenciasId: null, vigente: true,
+        cliente: { id: 3, nombre: cliente.nombre }, repartidor: { id: 1, nombre: repartidor.nombre },
+        createdAt: '2026-09-23T12:01:00.000Z', detalles,
+        movimiento: { id: id + 200, tipo: 'REGISTRO_EXISTENCIAS' }, requiereProduccion: detallesPedido.length > 0,
+        pedidoProduccion: detallesPedido.length ? { id: id + 100, clienteId: 3, repartidorId: 1,
+          registroExistenciasId: id, estado: 'VIGENTE', detalles: detallesPedido,
+          movimiento: { id: id + 300, tipo: 'PEDIDO_PRODUCCION' } } : null }, 201);
+    }
     if (/\/clientes\/(3|4)\/visitas$/.test(resource) && init?.method === 'POST') {
       if (delayedArrival) return delayedArrival;
       if (arrivalFailure) return json({ message: arrivalFailure }, 500);
@@ -122,6 +157,11 @@ beforeEach(() => {
       const payload = JSON.parse(String(init.body)) as { repartidorId: number; visitaClienteId: number; existencias: unknown[] };
       const selectedClient = clientes.find((item) => resource.endsWith(`/clientes/${item.id}/registros-existencias`))!;
       const selectedStock = selectedClient.id === 3 ? stock : stockB;
+      const detalles = (payload.existencias as { saborId: number; presentacionId: number; cantidad: number }[]).map((item) => {
+        const label = selectedStock.find((row) => row.saborId === item.saborId && row.presentacionId === item.presentacionId)!;
+        return { ...item, registroExistenciasId: 19, sabor: label.sabor, presentacion: label.presentacion };
+      });
+      historicalDetails.set(19, detalles);
       const detallesPedido = (payload.existencias as { saborId: number; presentacionId: number; cantidad: number }[])
         .flatMap((existencia) => {
           const objetivo = selectedStock.find((item) => item.saborId === existencia.saborId
@@ -132,11 +172,12 @@ beforeEach(() => {
             sabor: objetivo.sabor, presentacion: objetivo.presentacion }] : [];
         });
       return json({ id: 19, clienteId: selectedClient.id, repartidorId: payload.repartidorId, visitaClienteId: payload.visitaClienteId,
+        corrigeRegistroExistenciasId: null, corregidoPorRegistroExistenciasId: null, vigente: true,
         cliente: { id: selectedClient.id, nombre: selectedClient.nombre }, repartidor: { id: 1, nombre: repartidor.nombre },
-        createdAt: '2026-09-23T12:00:00.000Z', detalles: payload.existencias,
+        createdAt: '2026-09-23T12:00:00.000Z', detalles,
         movimiento: { id: 30, tipo: 'REGISTRO_EXISTENCIAS' }, requiereProduccion: detallesPedido.length > 0,
         pedidoProduccion: detallesPedido.length ? { id: 20, clienteId: selectedClient.id,
-          repartidorId: payload.repartidorId, registroExistenciasId: 19, detalles: detallesPedido,
+          repartidorId: payload.repartidorId, registroExistenciasId: 19, estado: 'VIGENTE', detalles: detallesPedido,
           movimiento: { id: 31, tipo: 'PEDIDO_PRODUCCION' } } : null }, 201);
     }
     if (init?.method && init.method !== 'GET') return json({ message: 'Método no permitido' }, 405);
@@ -467,5 +508,97 @@ describe('inicio de Repartidor', () => {
     await click('Guardar existencias');
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('configuración del surtido cambió');
     expect(button('Guardar existencias').disabled).toBe(true);
+  });
+
+  it('precarga existencias, corrige solo cantidades y usa el nuevo registro en correcciones sucesivas', async () => {
+    await openCapture();
+    await enter('Fresa · 1 litro', '0');
+    await enter('Fresa · 1/2 litro', '4');
+    await click('Guardar existencias');
+    await click('Corregir existencias');
+    const inputs = [...container.querySelectorAll<HTMLInputElement>('input[type="number"]')];
+    expect(inputs.map((input) => input.value)).toEqual(['0', '4']);
+    expect(container.textContent).toContain('Stock objetivo actual: 6 envases');
+    expect(container.querySelectorAll('input')).toHaveLength(2);
+    expect(button('Guardar corrección').disabled).toBe(false);
+    await enter('Fresa · 1/2 litro', '0');
+    await click('Guardar corrección');
+    const first = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/19/correcciones'));
+    expect(first?.[1].method).toBe('POST');
+    expect(JSON.parse(String(first?.[1].body))).toEqual({ existencias: [
+      { saborId: 7, presentacionId: 1, cantidad: 0 },
+      { saborId: 7, presentacionId: 2, cantidad: 0 },
+    ] });
+    expect(container.textContent).toContain('Corrección guardada correctamente');
+    expect(container.textContent).toContain('Pedido actualizado para producción');
+    await click('Corregir existencias');
+    expect([...container.querySelectorAll<HTMLInputElement>('input[type="number"]')].map((input) => input.value)).toEqual(['0', '0']);
+    await enter('Fresa · 1/2 litro', '6');
+    await click('Guardar corrección');
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/21/correcciones'))).toBe(true);
+    expect(container.textContent).toContain('Corrección guardada correctamente');
+    expect(container.textContent).toContain('Este cliente no requiere producción.');
+  });
+
+  it.each([
+    { caso: 'se eliminó una combinación', current: [stockBase], changed: true },
+    { caso: 'se añadió una combinación', current: [stockBase, medioLitro, {
+      ...stockBase, saborId: 8, sabor: { id: 8, nombre: 'Nuez', activo: true }, cantidad: 5,
+    }], changed: true },
+    { caso: 'se eliminó una combinación y se añadió otra', current: [stockBase, {
+      ...stockBase, saborId: 8, sabor: { id: 8, nombre: 'Nuez', activo: true }, cantidad: 5,
+    }], changed: true },
+    { caso: 'solo cambió el orden', current: [medioLitro, stockBase], changed: false },
+  ])('conserva las filas históricas cuando $caso', async ({ current, changed }) => {
+    const queryClient = await openCapture();
+    await enter('Fresa · 1 litro', '7');
+    await enter('Fresa · 1/2 litro', '3');
+    await click('Guardar existencias');
+    stock = current;
+    await act(async () => { await queryClient.invalidateQueries({ queryKey: ['surtido-operativo', 3] }); });
+    await click('Corregir existencias');
+    const labels = [...container.querySelectorAll<HTMLLabelElement>('label[for^="existencia-"]')].map((label) => label.textContent);
+    expect(labels).toEqual(['Fresa · 1 litro', 'Fresa · 1/2 litro']);
+    expect([...container.querySelectorAll<HTMLInputElement>('input[type="number"]')].map((input) => input.value)).toEqual(['7', '3']);
+    expect(container.textContent).not.toContain('Nuez');
+    expect(button('Guardar corrección').disabled).toBe(changed);
+    expect(container.textContent?.includes('Este registro no puede corregirse con la configuración actual.')).toBe(changed);
+    if (current.length === 1 || (changed && current.length === 2)) {
+      expect(container.textContent).toContain('Stock objetivo actual: no disponible');
+    }
+  });
+
+  it('rechaza vacío y negativos en una corrección y muestra conflictos 409 sin perder la captura', async () => {
+    await openCapture();
+    await enter('Fresa · 1 litro', '0');
+    await enter('Fresa · 1/2 litro', '4');
+    await click('Guardar existencias');
+    await click('Corregir existencias');
+    await enter('Fresa · 1/2 litro', '');
+    await click('Guardar corrección');
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('campo vacío');
+    await enter('Fresa · 1/2 litro', '-1');
+    await click('Guardar corrección');
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('entero no negativo');
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/correcciones'))).toHaveLength(0);
+    await enter('Fresa · 1/2 litro', '0');
+    correctionFailure = 'Este levantamiento ya fue corregido. Recarga la información antes de continuar.';
+    await click('Guardar corrección');
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('ya fue corregido');
+    expect((container.querySelectorAll<HTMLInputElement>('input[type="number"]')[1]).value).toBe('0');
+  });
+
+  it('muestra un pedido nuevo cuando el levantamiento original no necesitaba producción', async () => {
+    await openCapture();
+    await enter('Fresa · 1 litro', '0');
+    await enter('Fresa · 1/2 litro', '6');
+    await click('Guardar existencias');
+    expect(container.textContent).toContain('Este cliente no requiere producción.');
+    await click('Corregir existencias');
+    await enter('Fresa · 1/2 litro', '3');
+    await click('Guardar corrección');
+    expect(container.textContent).toContain('Corrección guardada correctamente');
+    expect(container.textContent).toContain('Pedido enviado automáticamente a producción');
+    expect(container.textContent).toContain('3 envases');
   });
 });

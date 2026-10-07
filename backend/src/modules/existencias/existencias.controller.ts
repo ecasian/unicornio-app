@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Post } from '@nestjs/common';
-import { ApiBadRequestResponse, ApiCreatedResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBadRequestResponse, ApiConflictResponse, ApiCreatedResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { CreateCorreccionExistenciasDto } from './dto/create-correccion-existencias.dto.js';
 import { CreateRegistroExistenciasDto } from './dto/create-registro-existencias.dto.js';
 import { RegistroExistenciasResponseDto } from './dto/registro-existencias-response.dto.js';
 import { ExistenciasService } from './existencias.service.js';
@@ -16,6 +17,17 @@ export class ExistenciasController {
   @ApiNotFoundResponse({ description: 'Cliente, repartidor o visita no encontrado' })
   create(@Param('clienteId', ParseIntPipe) clienteId: number, @Body() data: CreateRegistroExistenciasDto) {
     return this.existencias.create(clienteId, data);
+  }
+
+  @Post(':id/correcciones')
+  @ApiOperation({ summary: 'Crear una corrección versionada del último registro de existencias' })
+  @ApiCreatedResponse({ type: RegistroExistenciasResponseDto })
+  @ApiBadRequestResponse({ description: 'Captura incompleta, duplicada o inválida' })
+  @ApiConflictResponse({ description: 'Registro ya corregido o surtido operativo cambiado' })
+  @ApiNotFoundResponse({ description: 'Registro no encontrado para este cliente' })
+  correct(@Param('clienteId', ParseIntPipe) clienteId: number, @Param('id', ParseIntPipe) id: number,
+    @Body() data: CreateCorreccionExistenciasDto) {
+    return this.existencias.correct(clienteId, id, data);
   }
 
   @Get(':id')

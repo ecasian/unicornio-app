@@ -1,8 +1,9 @@
 # Unicornio
 
-Scaffolding técnico de una aplicación web con frontend React y API NestJS.
-Las reglas de dominio están en `AGENTS.md` y `docs/ARCHITECTURE.md`; aún no hay
-modelos de dominio, flujos operativos ni pantallas del producto.
+Aplicación web para administrar clientes, catálogos y surtido, y registrar
+visitas y existencias de reparto. Incluye una consulta de solo lectura de
+producción diaria. Las reglas de dominio están en `AGENTS.md` y
+`docs/ARCHITECTURE.md`.
 
 ## Requisitos
 
@@ -37,6 +38,7 @@ La aplicación usa el archivo `.env` en la raíz:
 | `BACKEND_PORT` | Puerto de NestJS. |
 | `FRONTEND_URL` | Origen permitido por CORS. |
 | `VITE_API_URL` | URL base de la API que consume Vite. |
+| `BUSINESS_TIMEZONE` | Zona horaria para la fecha local de llegada y Producción; por defecto `America/Mexico_City`. |
 
 ## Iniciar PostgreSQL
 
@@ -45,9 +47,8 @@ docker compose up -d --wait postgres
 ```
 
 Compose espera a que el healthcheck marque PostgreSQL como `healthy`, usa
-`.env` y mantiene los datos en el volumen `postgres_data`. El
-esquema Prisma solo define la conexión; todavía no contiene modelos ni
-migraciones de dominio.
+`.env` y mantiene los datos en el volumen `postgres_data`. El esquema Prisma y
+las migraciones versionadas definen el modelo de dominio.
 
 ## Iniciar backend y frontend
 
@@ -89,6 +90,18 @@ Las selecciones se guardan
 solo en memoria durante el flujo actual y se pierden al recargar la página;
 entonces será necesario seleccionar de nuevo y registrar otra llegada.
 
+## Producción D-1
+
+`/produccion` muestra de solo lectura los pedidos `VIGENTE` ligados a snapshots
+vigentes cuya `VisitaCliente.llegadaAt` corresponde al día local seleccionado.
+Sin selector explícito, el backend consulta el día calendario anterior en
+`BUSINESS_TIMEZONE` (`America/Mexico_City` por defecto). Se puede consultar una
+fecha pasada o futura con el selector. La corrección de un levantamiento
+conserva el día de la visita original; los pedidos sustituidos o snapshots ya
+corregidos no aparecen. La vista muestra detalle por tienda y un consolidado
+por sabor/presentación desde el mismo conjunto de pedidos. No permite editar
+ni enviar pedidos.
+
 ## Lint, pruebas y builds
 
 ```powershell
@@ -109,6 +122,17 @@ Para validar la configuración de Prisma con `.env` presente:
 ```powershell
 npm run prisma:validate --prefix backend
 ```
+
+La vista `/produccion` consulta por fecha local de llegada y devuelve detalle
+por tienda más consolidado. Para verificarla con PostgreSQL local y datos
+temporales acotados, ejecuta:
+
+```powershell
+npm run verify:produccion-db --prefix backend
+```
+
+El verificador compila el backend, comprueba que `DATABASE_URL` apunte a
+loopback y elimina únicamente las filas vinculadas a sus fixtures.
 
 ## Verificación del catálogo en PostgreSQL
 

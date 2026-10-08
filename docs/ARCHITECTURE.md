@@ -34,12 +34,12 @@ docs/                  decisiones y referencias del producto
 | Visitas | Registra la llegada del repartidor al cliente antes del levantamiento. |
 | Existencias | Captura y consulta de snapshots completos e históricos. |
 | Reposición (futura) | Cálculo derivado del objetivo y la existencia vigente; no persiste una entidad `Reposicion`. |
-| Pedidos a producción | Creación automática con la cantidad necesaria al guardar existencias. |
+| Pedidos a producción | Creación automática con la cantidad necesaria al guardar existencias; consulta de solo lectura en `/produccion`. |
 | Bitácora | Registro automático y consulta de movimientos. |
 
-Las experiencias previstas son `/admin`, `/repartidor` y, en un slice futuro,
-`/produccion`. El pedido se crea al guardar existencias y se recalcula al
-corregirlas mediante un nuevo snapshot.
+Las experiencias incluyen `/admin`, `/repartidor` y `/produccion`. El pedido
+se crea al guardar existencias y se recalcula al corregirlas mediante un nuevo
+snapshot. `/produccion` no escribe datos.
 
 El botón «Sucursales» permanece visible e inactivo. No tiene modelo, API ni
 lógica. «Registro de ventas» en los mockups se interpreta como Bitácora/Historial
@@ -95,8 +95,9 @@ entidades porque su resultado se calcula y no se persiste.
    cliente, repartidor, visita y combinaciones originales; valida el surtido
    vigente y recalcula faltantes con el objetivo actual en una transacción.
    El pedido anterior queda `SUSTITUIDO` y se crea uno `VIGENTE` solo si hay
-   faltantes. La futura vista `/produccion` consultará únicamente pedidos
-   `VIGENTE`.
+   faltantes. `/produccion` consulta únicamente pedidos `VIGENTE` ligados al
+   snapshot que sigue vigente; el detalle y el consolidado se derivan del
+   mismo conjunto dentro de una lectura `RepeatableRead`.
 7. Los totales conservan por separado unidades de 1 L y de 1/2 L. Los litros
    equivalentes se calculan como `unidades1L + unidades500ml * 0.5`.
 8. Una desactivación impide nuevas operaciones con el catálogo desactivado,
@@ -118,9 +119,13 @@ de 1 L y 1/2 L; no se crean tamaños adicionales durante el MVP.
 consulta objetivos, marca su llegada y registra existencias. No crea sabores ni
 movimientos de bitácora de forma manual. El pedido nace al guardar el snapshot.
 
-**Producción (futura):** `/produccion` consultará por defecto los levantamientos
-del día anterior: normalmente lo levantado el día D se produce la mañana del
-día D+1. Mostrará detalle por tienda y consolidado por sabor/presentación.
+**Producción:** `/produccion` consulta de solo lectura los pedidos vigentes cuya
+visita asociada ocurrió en la fecha local solicitada. La fecha se interpreta en
+`BUSINESS_TIMEZONE` (por defecto `America/Mexico_City`); sin fecha, usa el día
+calendario local anterior. La fecha de visita permanece como criterio aunque
+el snapshot se haya corregido después. Muestra detalle por tienda y
+consolidado por sabor/presentación a partir de `cantidadSolicitada`; fechas sin
+pedidos devuelven una respuesta vacía. No permite editar ni enviar pedidos.
 Sucursales y producción vespertina quedan fuera de este alcance.
 
 Estas vistas no constituyen una frontera de seguridad mientras no exista
@@ -157,9 +162,9 @@ llegada → capturar existencias → guardar levantamiento → calcular faltante
 crear pedido automáticamente → permitir corrección versionada si hubo error →
 Producción consulta al día siguiente por tienda y en consolidado.
 
-En esta rama el flujo termina con la corrección versionada, el pedido
-recalculado cuando es necesario y la confirmación al repartidor. `/produccion`
-queda pendiente.
+El flujo termina con la corrección versionada, el pedido recalculado cuando es
+necesario y la confirmación al repartidor. Producción consulta pedidos
+vigentes agrupados por el día local de la llegada.
 
 ## Bitácora automática
 

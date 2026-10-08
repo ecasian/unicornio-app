@@ -5,12 +5,14 @@ import { RepartidoresPage } from '../modules/repartidores/RepartidoresPage';
 import { SaboresPage } from '../modules/catalogo/SaboresPage';
 import { StockObjetivoPage } from '../modules/stock-objetivo/StockObjetivoPage';
 import { RepartidorInicioPage } from '../modules/repartidor-inicio/RepartidorInicioPage';
+import { ProduccionPage } from '../modules/produccion/ProduccionPage';
 
 export function AppRouter() {
   return (
     <Routes>
       <Route path="/" element={<HealthPage />} />
       <Route path="/repartidor" element={<RepartidorInicioPage />} />
+      <Route path="/produccion" element={<ProduccionPage />} />
       <Route path="/admin/clientes" element={<ClientesPage />} />
       <Route path="/admin/clientes/:clienteId/stock-objetivo" element={<StockObjetivoPage />} />
       <Route path="/admin/repartidores" element={<RepartidoresPage />} />

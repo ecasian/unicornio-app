@@ -8,6 +8,7 @@ import { CatalogoModule } from './modules/catalogo/catalogo.module.js';
 import { StockObjetivoModule } from './modules/stock-objetivo/stock-objetivo.module.js';
 import { ExistenciasModule } from './modules/existencias/existencias.module.js';
 import { VisitasModule } from './modules/visitas/visitas.module.js';
+import { ProduccionModule } from './modules/produccion/produccion.module.js';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { VisitasModule } from './modules/visitas/visitas.module.js';
     StockObjetivoModule,
     ExistenciasModule,
     VisitasModule,
+    ProduccionModule,
   ],
 })
 export class AppModule {}

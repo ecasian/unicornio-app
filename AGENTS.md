@@ -155,14 +155,19 @@ recalcularse usando la existencia vigente.
 Cada corrección crea un nuevo `RegistroExistencias` inmutable y solo puede
 corregirse el último registro de su cadena. Los pedidos anteriores se
 conservan como `SUSTITUIDO`; el nuevo pedido, si hay faltantes, queda
-`VIGENTE`. La futura vista `/produccion` consultará solo pedidos vigentes.
+`VIGENTE`. La vista `/produccion` consulta solo pedidos vigentes.
 
 ## Producción
 
-La experiencia futura `/produccion` mostrará el detalle por tienda y un
-consolidado por sabor/presentación. Normalmente consultará por defecto los
-levantamientos del día anterior: lo registrado el día D se produce la mañana
-del día D+1. No implementar todavía producción vespertina ni sucursales.
+`/produccion` es una consulta de solo lectura para el día calendario local de
+llegada (`VisitaCliente.llegadaAt`), en la zona `BUSINESS_TIMEZONE` (por
+defecto `America/Mexico_City`). Sin `fecha`, consulta el día calendario local
+anterior; acepta fechas pasadas o futuras explícitas. Solo muestra pedidos
+`VIGENTE` ligados al snapshot vigente. Una corrección conserva el día de la
+visita original; si la corrección sustituye el pedido o no genera uno nuevo,
+el anterior deja de aparecer. El detalle por tienda y el consolidado se
+derivan de los mismos pedidos y usan `cantidadSolicitada`. La vista no edita,
+crea ni envía pedidos. No implementar producción vespertina ni sucursales.
 
 ## Totales
 

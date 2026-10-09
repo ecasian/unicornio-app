@@ -102,6 +102,17 @@ corregidos no aparecen. La vista muestra detalle por tienda y un consolidado
 por sabor/presentación desde el mismo conjunto de pedidos. No permite editar
 ni enviar pedidos.
 
+## Historial de visitas de Administración
+
+`/admin/visitas` permite consultar las llegadas registradas para un día,
+opcionalmente filtradas por cliente y repartidor. La fecha inicial la resuelve
+el backend: si se omite, usa hoy en `BUSINESS_TIMEZONE`
+(`America/Mexico_City` por defecto). La fuente de verdad es
+`VisitaCliente.llegadaAt`; cada evento se muestra, aunque haya varias visitas
+al mismo cliente durante el día o el cliente/repartidor esté ahora inactivo.
+La pantalla y `GET /api/admin/visitas` son de solo lectura. El panel no tiene
+autenticación todavía y no constituye una barrera de seguridad.
+
 ## Lint, pruebas y builds
 
 ```powershell

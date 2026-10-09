@@ -32,6 +32,7 @@ docs/                  decisiones y referencias del producto
 | Catálogo | Sabores, las dos presentaciones iniciales y disponibilidad por sabor. |
 | Stock objetivo | Cantidades configuradas por el administrador. |
 | Visitas | Registra la llegada del repartidor al cliente antes del levantamiento. |
+| Historial administrativo de visitas | Consulta de solo lectura de llegadas por día, cliente y repartidor. |
 | Existencias | Captura y consulta de snapshots completos e históricos. |
 | Reposición (futura) | Cálculo derivado del objetivo y la existencia vigente; no persiste una entidad `Reposicion`. |
 | Pedidos a producción | Creación automática con la cantidad necesaria al guardar existencias; consulta de solo lectura en `/produccion`. |
@@ -127,6 +128,15 @@ el snapshot se haya corregido después. Muestra detalle por tienda y
 consolidado por sabor/presentación a partir de `cantidadSolicitada`; fechas sin
 pedidos devuelven una respuesta vacía. No permite editar ni enviar pedidos.
 Sucursales y producción vespertina quedan fuera de este alcance.
+
+**Historial administrativo de visitas:** `/admin/visitas` consulta
+`VisitaCliente.llegadaAt` como fuente de verdad, en el día calendario de
+`BUSINESS_TIMEZONE` (por defecto `America/Mexico_City`). Sin fecha explícita,
+usa hoy, a diferencia de Producción, que usa ayer. Los filtros de cliente y
+repartidor son opcionales. Devuelve todas las visitas en orden descendente de
+llegada, incluidas visitas repetidas y las vinculadas a clientes o repartidores
+inactivos. No escribe, edita ni elimina visitas. Esta separación funcional no
+es un control de acceso mientras no haya autenticación.
 
 Estas vistas no constituyen una frontera de seguridad mientras no exista
 autenticación.

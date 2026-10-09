@@ -57,10 +57,17 @@ function yesterdayLocal(now: Date, timezone: string) {
   return `${String(yesterday.getUTCFullYear()).padStart(4, '0')}-${String(yesterday.getUTCMonth() + 1).padStart(2, '0')}-${String(yesterday.getUTCDate()).padStart(2, '0')}`;
 }
 
-export function resolveBusinessDate(fecha: string | undefined, timezone: string, now = new Date()): BusinessDateWindow {
+export type BusinessDateDefault = 'today' | 'yesterday';
+
+export function resolveBusinessDate(
+  fecha: string | undefined,
+  timezone: string,
+  now = new Date(),
+  defaultDay: BusinessDateDefault = 'yesterday',
+): BusinessDateWindow {
   // Validate the timezone early and consistently, including when fecha is provided.
   dateParts(now, timezone);
-  const resolved = fecha ?? yesterdayLocal(now, timezone);
+  const resolved = fecha ?? (defaultDay === 'today' ? localDate(now, timezone) : yesterdayLocal(now, timezone));
   const start = localMidnightUtc(resolved, timezone);
   const [year, month, day] = resolved.split('-').map(Number);
   const next = new Date(Date.UTC(year, month - 1, day + 1));

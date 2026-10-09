@@ -37,6 +37,7 @@ Puede:
 - consultar existencias
 - consultar pedidos a producción
 - consultar bitácora de movimientos
+- consultar el historial de llegadas por fecha, cliente y repartidor
 
 ### Repartidor
 
@@ -168,6 +169,17 @@ visita original; si la corrección sustituye el pedido o no genera uno nuevo,
 el anterior deja de aparecer. El detalle por tienda y el consolidado se
 derivan de los mismos pedidos y usan `cantidadSolicitada`. La vista no edita,
 crea ni envía pedidos. No implementar producción vespertina ni sucursales.
+
+## Historial administrativo de visitas
+
+`/admin/visitas` es una consulta de solo lectura basada exclusivamente en
+`VisitaCliente.llegadaAt`. Sin `fecha`, consulta hoy según
+`BUSINESS_TIMEZONE` (por defecto `America/Mexico_City`); admite filtros
+opcionales por cliente y repartidor. Cada visita es un evento independiente:
+no deduplicar visitas del mismo cliente o repartidor en un día. Mostrar
+históricos aunque el cliente o repartidor esté actualmente inactivo.
+La vista administrativa todavía no es una barrera de seguridad; no implementar
+autenticación ni roles como parte de este módulo.
 
 ## Totales
 

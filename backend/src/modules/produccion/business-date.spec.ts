@@ -9,6 +9,13 @@ describe('business date window', () => {
     expect(result.end.toISOString()).toBe('2026-10-05T06:00:00.000Z');
   });
 
+  it('can use today as a local calendar day for administrative queries', () => {
+    const result = resolveBusinessDate(undefined, 'America/Mexico_City', new Date('2026-10-07T05:30:00.000Z'), 'today');
+    expect(result.fecha).toBe('2026-10-06');
+    expect(result.start.toISOString()).toBe('2026-10-06T06:00:00.000Z');
+    expect(result.end.toISOString()).toBe('2026-10-07T06:00:00.000Z');
+  });
+
   it('uses calendar boundaries instead of a rolling 24-hour window', () => {
     const result = resolveBusinessDate('2026-10-05', 'America/Mexico_City');
     expect(result.start.toISOString()).toBe('2026-10-05T06:00:00.000Z');

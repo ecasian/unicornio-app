@@ -237,3 +237,33 @@ No implementar todavía:
 - facturación
 - POS
 - ERP
+
+## Environment Preflight & Quality Gates
+
+Todo slice debe comenzar informando: `Environment Preflight: READY`, `BLOCKED` o `BASELINE_FAILED`. No iniciar implementación funcional hasta clasificar el entorno.
+
+### Antes de implementar
+
+- Confirmar repositorio, rama y `git status`; identificar y preservar cambios preexistentes.
+- Verificar versiones requeridas de Node/npm y `package-lock.json` en backend y frontend.
+- Si faltan dependencias o su estado no es confiable, ejecutar `npm ci` en ambos proyectos. En Windows usar `npm.cmd` si PowerShell bloquea `npm.ps1`.
+- Verificar Prisma CLI y herramientas de test, lint y build.
+- Si se requiere integración DB, verificar PostgreSQL local y comprobar `DATABASE_URL` sin revelar credenciales. No operar sobre Railway.
+- Ejecutar baseline de lint, tests y builds pertinentes. Clasificar como `READY`, `BLOCKED` o `BASELINE_FAILED`.
+
+### Entorno bloqueado o baseline fallido
+
+- Si está `BLOCKED`, no implementar funcionalidad: diagnosticar la causa concreta, revisar logs de npm y no dejar instalaciones ejecutándose indefinidamente. No cambiar configuración global, desactivar protecciones ni alterar dependencias/versiones a ciegas.
+- Si falla el baseline, distinguir fallos preexistentes de los introducidos, documentar evidencia y acordar un plan explícito de remediación o aislamiento antes de implementar.
+- Reportar causa comprobada, pasos ejecutados y acción necesaria. Nunca declarar terminado un slice sin sus verificaciones.
+
+### Durante el trabajo y al terminar
+
+- Mantener diffs pequeños; respetar arquitectura y contratos; agregar pruebas pertinentes; evitar dependencias innecesarias y mantenimiento oportunista. Explicar decisiones no evidentes.
+- Al terminar ejecutar backend lint/tests/build y frontend lint/tests/build; Prisma validate y migrate status cuando apliquen; verificadores PostgreSQL pertinentes; `git diff --check`; revisar también archivos nuevos no rastreados y hacer code review final.
+- Informar resultados, limitaciones, hallazgos, impacto y entorno utilizado.
+
+### Criterio de entrega y seguridad
+
+- Solo informar `Quality Gate: VERIFIED` cuando se cumplan criterios de aceptación, pasen todas las verificaciones obligatorias aplicables, no haya hallazgos críticos pendientes y se identifique el entorno. En cualquier otro caso informar `Quality Gate: NOT VERIFIED`.
+- Nunca ejecutar reset de base de datos sin autorización ni probar accidentalmente contra staging/production. No divulgar secretos, no usar `npm audit fix` indiscriminadamente y no descartar cambios ajenos.

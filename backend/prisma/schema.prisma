@@ -45,6 +45,54 @@ model Sabor {
   stockObjetivos StockObjetivo[]
   detallesExistencias DetalleExistencias[]
   detallesPedido DetallePedido[]
+  detallesNecesidadSucursal DetalleNecesidadSucursal[]
+}
+
+enum EstadoConcentradoSucursal {
+  BORRADOR
+  CONFIRMADO
+}
+
+model Sucursal {
+  id Int @id @default(autoincrement())
+  nombre String @unique
+  activo Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  necesidades NecesidadSucursal[]
+}
+
+model ConcentradoSucursales {
+  id Int @id @default(autoincrement())
+  fecha DateTime @db.Date @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  necesidades NecesidadSucursal[]
+}
+
+model NecesidadSucursal {
+  id Int @id @default(autoincrement())
+  concentradoId Int
+  sucursalId Int
+  estado EstadoConcentradoSucursal @default(BORRADOR)
+  confirmadoAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  concentrado ConcentradoSucursales @relation(fields: [concentradoId], references: [id], onDelete: Restrict)
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  detalles DetalleNecesidadSucursal[]
+  @@unique([concentradoId, sucursalId])
+}
+
+model DetalleNecesidadSucursal {
+  necesidadSucursalId Int
+  saborId Int
+  capacidadLitros Int
+  cantidad Int
+  @@index([saborId, capacidadLitros])
+  necesidad NecesidadSucursal @relation(fields: [necesidadSucursalId], references: [id], onDelete: Restrict)
+  sabor Sabor @relation(fields: [saborId], references: [id], onDelete: Restrict)
+  @@id([necesidadSucursalId, saborId, capacidadLitros])
 }
 
 model Presentacion {

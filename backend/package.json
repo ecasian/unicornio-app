@@ -19,6 +19,7 @@
     "verify:correcciones-db": "dotenv -e ../.env -- prisma generate && npm run build && dotenv -e ../.env -- node scripts/verify-correcciones-db.mjs",
     "verify:produccion-db": "dotenv -e ../.env -- prisma generate && npm run build && dotenv -e ../.env -- node scripts/verify-produccion-db.mjs",
     "verify:admin-visitas-db": "dotenv -e ../.env -- prisma generate && npm run build && dotenv -e ../.env -- node scripts/verify-admin-visitas-db.mjs",
+    "verify:sucursales-db": "prisma generate && npm run build && node scripts/verify-sucursales-db.mjs",
     "seed:staging": "node scripts/seed-staging.mjs"
   },
   "dependencies": {

@@ -15,6 +15,7 @@ export function HealthPage() {
       <h1 className="text-3xl font-bold">Unicornio</h1>
       <Link to="/admin/clientes" className="rounded-full bg-fuchsia-700 px-6 py-3 text-center font-semibold text-white">Administrador → Clientes</Link>
       <Link to="/admin/repartidores" className="rounded-full border border-fuchsia-700 px-6 py-3 text-center font-semibold text-fuchsia-800">Administrador → Repartidores</Link>
+      <Link to="/sucursales" className="rounded-full border border-fuchsia-700 px-6 py-3 text-center font-semibold text-fuchsia-800">Concentrado de sucursales</Link>
       <p className="text-slate-600">Estado técnico de la API</p>
       <p role="status" className="rounded-lg border border-slate-200 p-4">
         {health.isPending

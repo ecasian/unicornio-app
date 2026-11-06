@@ -10,6 +10,7 @@ import { ExistenciasModule } from './modules/existencias/existencias.module.js';
 import { VisitasModule } from './modules/visitas/visitas.module.js';
 import { ProduccionModule } from './modules/produccion/produccion.module.js';
 import { AdminVisitasModule } from './modules/admin-visitas/admin-visitas.module.js';
+import { SucursalesModule } from './modules/sucursales/sucursales.module.js';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { AdminVisitasModule } from './modules/admin-visitas/admin-visitas.module
     VisitasModule,
     ProduccionModule,
     AdminVisitasModule,
+    SucursalesModule,
   ],
 })
 export class AppModule {}

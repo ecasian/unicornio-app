@@ -7,6 +7,7 @@ import { StockObjetivoPage } from '../modules/stock-objetivo/StockObjetivoPage';
 import { RepartidorInicioPage } from '../modules/repartidor-inicio/RepartidorInicioPage';
 import { ProduccionPage } from '../modules/produccion/ProduccionPage';
 import { VisitasPage } from '../modules/admin-visitas/VisitasPage';
+import { ConcentradoSucursalesPage } from '../modules/sucursales/ConcentradoSucursalesPage';
 
 export function AppRouter() {
   return (
@@ -15,6 +16,7 @@ export function AppRouter() {
       <Route path="/repartidor" element={<RepartidorInicioPage />} />
       <Route path="/produccion" element={<ProduccionPage />} />
       <Route path="/admin/visitas" element={<VisitasPage />} />
+      <Route path="/sucursales" element={<ConcentradoSucursalesPage />} />
       <Route path="/admin/clientes" element={<ClientesPage />} />
       <Route path="/admin/clientes/:clienteId/stock-objetivo" element={<StockObjetivoPage />} />
       <Route path="/admin/repartidores" element={<RepartidoresPage />} />

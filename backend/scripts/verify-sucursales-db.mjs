@@ -257,5 +257,3 @@ try {
     await app.close();
   }
 }
-
-\n

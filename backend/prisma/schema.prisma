@@ -46,6 +46,33 @@ model Sabor {
   detallesExistencias DetalleExistencias[]
   detallesPedido DetallePedido[]
   detallesNecesidadSucursal DetalleNecesidadSucursal[]
+  acondicionamientos AcondicionamientoYogurtBase[]
+}
+
+model LoteYogurtBase {
+  id Int @id @default(autoincrement())
+  fechaElaboracion DateTime @db.Date
+  cubetas10L Int
+  cubetas6L Int
+  cubetas4L Int
+  litrosReales Decimal @db.Decimal(14, 3)
+  createdAt DateTime @default(now())
+  acondicionamientos AcondicionamientoYogurtBase[] @relation("YogurtBaseOrigen")
+  @@index([fechaElaboracion])
+}
+
+model AcondicionamientoYogurtBase {
+  id Int @id @default(autoincrement())
+  loteId Int
+  saborId Int
+  claveSolicitud String @unique @db.Uuid
+  litrosConsumidos Decimal @db.Decimal(14, 3)
+  litrosObtenidos Decimal @db.Decimal(14, 3)
+  createdAt DateTime @default(now())
+  lote LoteYogurtBase @relation("YogurtBaseOrigen", fields: [loteId], references: [id], onDelete: Restrict)
+  sabor Sabor @relation(fields: [saborId], references: [id], onDelete: Restrict)
+  @@index([loteId, createdAt])
+  @@index([saborId, createdAt])
 }
 
 enum EstadoConcentradoSucursal {

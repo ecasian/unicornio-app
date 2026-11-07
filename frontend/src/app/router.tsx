@@ -8,6 +8,7 @@ import { RepartidorInicioPage } from '../modules/repartidor-inicio/RepartidorIni
 import { ProduccionPage } from '../modules/produccion/ProduccionPage';
 import { VisitasPage } from '../modules/admin-visitas/VisitasPage';
 import { ConcentradoSucursalesPage } from '../modules/sucursales/ConcentradoSucursalesPage';
+import { YogurtBasePage } from '../modules/yogurt-base/YogurtBasePage';
 
 export function AppRouter() {
   return (
@@ -15,6 +16,7 @@ export function AppRouter() {
       <Route path="/" element={<HealthPage />} />
       <Route path="/repartidor" element={<RepartidorInicioPage />} />
       <Route path="/produccion" element={<ProduccionPage />} />
+      <Route path="/produccion/base" element={<YogurtBasePage />} />
       <Route path="/admin/visitas" element={<VisitasPage />} />
       <Route path="/sucursales" element={<ConcentradoSucursalesPage />} />
       <Route path="/admin/clientes" element={<ClientesPage />} />

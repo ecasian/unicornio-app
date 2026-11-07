@@ -31,6 +31,14 @@ function validateDate(fecha: string) {
   }
 }
 
+export function businessCalendarDaysBetween(from: string, to: string): number {
+  validateDate(from);
+  validateDate(to);
+  const [fromYear, fromMonth, fromDay] = from.split('-').map(Number);
+  const [toYear, toMonth, toDay] = to.split('-').map(Number);
+  return (Date.UTC(toYear, toMonth - 1, toDay) - Date.UTC(fromYear, fromMonth - 1, fromDay)) / 86_400_000;
+}
+
 function localMidnightUtc(fecha: string, timezone: string): Date {
   validateDate(fecha);
   const [year, month, day] = fecha.split('-').map(Number);

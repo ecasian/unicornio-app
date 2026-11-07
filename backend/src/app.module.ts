@@ -11,6 +11,7 @@ import { VisitasModule } from './modules/visitas/visitas.module.js';
 import { ProduccionModule } from './modules/produccion/produccion.module.js';
 import { AdminVisitasModule } from './modules/admin-visitas/admin-visitas.module.js';
 import { SucursalesModule } from './modules/sucursales/sucursales.module.js';
+import { YogurtBaseModule } from './modules/yogurt-base/yogurt-base.module.js';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { SucursalesModule } from './modules/sucursales/sucursales.module.js';
     ProduccionModule,
     AdminVisitasModule,
     SucursalesModule,
+    YogurtBaseModule,
   ],
 })
 export class AppModule {}

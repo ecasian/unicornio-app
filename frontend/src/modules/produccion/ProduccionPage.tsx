@@ -27,7 +27,7 @@ export function ProduccionPage() {
     <header className="bg-indigo-800 px-4 py-4 text-white">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
         <div><Link to="/" className="font-semibold underline underline-offset-4">Unicornio</Link><span className="mx-2" aria-hidden="true">/</span><span>Producción</span></div>
-        <span className="text-sm">Consulta</span>
+        <Link to="/produccion/base" className="text-sm underline">YogurtBase</Link>
       </div>
     </header>
     <main className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6">

@@ -47,6 +47,7 @@ model Sabor {
   detallesPedido DetallePedido[]
   detallesNecesidadSucursal DetalleNecesidadSucursal[]
   acondicionamientos AcondicionamientoYogurtBase[]
+  inventariosSucursal DetalleInventarioSucursal[]
 }
 
 model LoteYogurtBase {
@@ -87,6 +88,46 @@ model Sucursal {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   necesidades NecesidadSucursal[]
+  reportesInventario ReporteInventarioSucursal[]
+}
+
+enum EstadoInventarioSucursal {
+  BORRADOR
+  CONFIRMADO
+}
+
+enum TurnoInventarioSucursal {
+  MATUTINO
+  VESPERTINO
+}
+
+model ReporteInventarioSucursal {
+  id Int @id @default(autoincrement())
+  sucursalId Int
+  fecha DateTime @db.Date
+  // Null is reserved for historical reports created before shift capture existed.
+  turno TurnoInventarioSucursal?
+  estado EstadoInventarioSucursal @default(BORRADOR)
+  confirmadoAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  detalles DetalleInventarioSucursal[]
+
+  @@unique([sucursalId, fecha, turno])
+  @@index([fecha, turno, estado])
+  @@index([sucursalId, turno, fecha])
+}
+
+model DetalleInventarioSucursal {
+  reporteId Int
+  saborId Int
+  litros Decimal @db.Decimal(14, 3)
+  reporte ReporteInventarioSucursal @relation(fields: [reporteId], references: [id], onDelete: Restrict)
+  sabor Sabor @relation(fields: [saborId], references: [id], onDelete: Restrict)
+
+  @@id([reporteId, saborId])
+  @@index([saborId])
 }
 
 model ConcentradoSucursales {

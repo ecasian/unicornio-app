@@ -12,6 +12,7 @@ import { ProduccionModule } from './modules/produccion/produccion.module.js';
 import { AdminVisitasModule } from './modules/admin-visitas/admin-visitas.module.js';
 import { SucursalesModule } from './modules/sucursales/sucursales.module.js';
 import { YogurtBaseModule } from './modules/yogurt-base/yogurt-base.module.js';
+import { InventarioSucursalesModule } from './modules/inventario-sucursales/inventario-sucursales.module.js';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { YogurtBaseModule } from './modules/yogurt-base/yogurt-base.module.js';
     AdminVisitasModule,
     SucursalesModule,
     YogurtBaseModule,
+    InventarioSucursalesModule,
   ],
 })
 export class AppModule {}

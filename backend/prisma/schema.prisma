@@ -48,6 +48,7 @@ model Sabor {
   detallesNecesidadSucursal DetalleNecesidadSucursal[]
   acondicionamientos AcondicionamientoYogurtBase[]
   inventariosSucursal DetalleInventarioSucursal[]
+  objetivosSucursal StockObjetivoSucursal[]
 }
 
 model LoteYogurtBase {
@@ -89,6 +90,20 @@ model Sucursal {
   updatedAt DateTime @updatedAt
   necesidades NecesidadSucursal[]
   reportesInventario ReporteInventarioSucursal[]
+  stockObjetivos StockObjetivoSucursal[]
+}
+
+model StockObjetivoSucursal {
+  sucursalId Int
+  saborId Int
+  litros Decimal @db.Decimal(14, 3)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  sabor Sabor @relation(fields: [saborId], references: [id], onDelete: Restrict)
+
+  @@id([sucursalId, saborId])
+  @@index([saborId])
 }
 
 enum EstadoInventarioSucursal {

@@ -21,6 +21,7 @@
     "verify:admin-visitas-db": "dotenv -e ../.env -- prisma generate && npm run build && dotenv -e ../.env -- node scripts/verify-admin-visitas-db.mjs",
     "verify:sucursales-db": "prisma generate && npm run build && node scripts/verify-sucursales-db.mjs",
     "verify:inventario-sucursales-db": "prisma generate && npm run build && node scripts/verify-inventario-sucursales-db.mjs",
+    "verify:stock-objetivo-sucursales-db": "prisma generate && npm run build && node scripts/verify-stock-objetivo-sucursales-db.mjs",
     "verify:yogurt-base-db": "prisma generate && npm run build && node scripts/verify-yogurt-base-db.mjs",
     "seed:staging": "node scripts/seed-staging.mjs"
   },

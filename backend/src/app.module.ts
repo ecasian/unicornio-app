@@ -13,6 +13,7 @@ import { AdminVisitasModule } from './modules/admin-visitas/admin-visitas.module
 import { SucursalesModule } from './modules/sucursales/sucursales.module.js';
 import { YogurtBaseModule } from './modules/yogurt-base/yogurt-base.module.js';
 import { InventarioSucursalesModule } from './modules/inventario-sucursales/inventario-sucursales.module.js';
+import { StockObjetivoSucursalesModule } from './modules/stock-objetivo-sucursales/stock-objetivo-sucursales.module.js';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { InventarioSucursalesModule } from './modules/inventario-sucursales/inve
     SucursalesModule,
     YogurtBaseModule,
     InventarioSucursalesModule,
+    StockObjetivoSucursalesModule,
   ],
 })
 export class AppModule {}

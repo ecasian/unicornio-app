@@ -13,8 +13,8 @@ Estructura propuesta para la implementación posterior:
 ```text
 frontend/src/
   app/                 navegación y composición de vistas
-  modules/             clientes, catalogo, stock-objetivo, existencias,
-                       reposicion, pedidos, bitacora, repartidores
+  modules/             clientes, catalogo, stock-objetivo, sucursales,
+                       existencias, reposicion, pedidos, bitacora, repartidores
   shared/              cliente REST, tipos y componentes comunes
 backend/src/
   modules/             mismos límites funcionales y reglas del dominio
@@ -30,7 +30,8 @@ docs/                  decisiones y referencias del producto
 | Clientes | Alta, edición, activación, desactivación y consulta de tiendas externas. |
 | Repartidores | Catálogo simple y selección de un repartidor activo. |
 | Catálogo | Sabores, las dos presentaciones iniciales y disponibilidad por sabor. |
-| Stock objetivo | Cantidades configuradas por el administrador. |
+| Stock objetivo de clientes | Cantidades configuradas por el administrador para el surtido de cada cliente externo. |
+| Stock objetivo de sucursales | Objetivo base permanente en litros por sucursal y sabor; separado del inventario por turno y del concentrado de necesidades. |
 | Visitas | Registra la llegada del repartidor al cliente antes del levantamiento. |
 | Historial administrativo de visitas | Consulta de solo lectura de llegadas por día, cliente y repartidor. |
 | Existencias | Captura y consulta de snapshots completos e históricos. |
@@ -42,15 +43,18 @@ Las experiencias incluyen `/admin`, `/repartidor` y `/produccion`. El pedido
 se crea al guardar existencias y se recalcula al corregirlas mediante un nuevo
 snapshot. `/produccion` no escribe datos.
 
-El botón «Sucursales» permanece visible e inactivo. No tiene modelo, API ni
-lógica. «Registro de ventas» en los mockups se interpreta como Bitácora/Historial
-de movimientos, sin ventas contables.
+El módulo de sucursales conserva separados el concentrado de necesidades en
+cubetas, los inventarios físicos por turno y el objetivo base en litros.
+«Registro de ventas» en los mockups se interpreta como Bitácora/Historial de
+movimientos, sin ventas contables.
 
 ## Entidades y relaciones
 
 | Entidad | Campos principales | Relaciones |
 | --- | --- | --- |
 | `Cliente` | `id`, `nombre`, `celular`, `direccion`, `manejaMedioLitro`, `activo`, `createdAt`, `updatedAt` | Tiene objetivos, visitas, snapshots, pedidos y movimientos. No se relaciona con sucursales. |
+| `Sucursal` | `id`, `nombre`, `activo`, `createdAt`, `updatedAt` | Tiene concentrados de necesidades, inventarios por fecha/turno y objetivos base. |
+| `StockObjetivoSucursal` | `sucursalId`, `saborId`, `litros Decimal(14,3)`, `createdAt`, `updatedAt` | Clave única por sucursal y sabor. Una fila con cero es objetivo explícito; sin fila significa no configurado. |
 | `Repartidor` | `id`, `nombre`, `activo`, `createdAt`, `updatedAt` | Identifica visitas, snapshots, pedidos y movimientos. No tiene otros campos en el MVP. |
 | `Sabor` | `id`, `nombre`, `activo`, `createdAt`, `updatedAt` | Se relaciona con presentaciones mediante `SaborPresentacion` y aparece en los detalles. |
 | `Presentacion` | `id`, `nombre`, `litrosEquivalentes`, `createdAt`, `updatedAt` | Valores iniciales: 1 litro (`1`) y 1/2 litro (`0.5`); no se crean otros tamaños en el MVP. |
@@ -107,14 +111,30 @@ entidades porque su resultado se calcula y no se persiste.
    `updatedAt`. Los registros históricos y movimientos tienen `createdAt`
    como fecha/hora del evento; sus detalles toman esa fecha/hora de la
    cabecera, sin timestamps propios.
+10. `StockObjetivoSucursal` es el objetivo base permanente en litros deseados
+    tras abastecimiento. Es independiente de `StockObjetivo` de clientes,
+    `ReporteInventarioSucursal` y `NecesidadSucursal`.
+11. El reemplazo de objetivos de una sucursal es completo y transaccional.
+    Cero se persiste explícitamente; una fila ausente no equivale a cero.
+    Los objetivos existentes de sabores inactivos deben preservarse sin cambio
+    al reemplazar el conjunto; no se pueden crear ni editar mientras el sabor
+    permanezca inactivo.
+12. La comparación usa únicamente el snapshot confirmado exacto de sucursal,
+    fecha y turno seleccionados. Valores sin fila permanecen ausentes; la
+    diferencia informativa se calcula como objetivo menos existencia solo
+    cuando existen ambos. No genera pedidos ni reposición automática.
+13. Los ajustes de cantidad por jornada pertenecen a otro slice y nunca
+    sobrescriben este objetivo base. No se aplica al inventario de sucursales
+    el umbral del 50% usado en el dominio de clientes externos.
 
 ## Responsabilidades por vista
 
 **Administrador:** crea y edita clientes; activa o desactiva clientes, sabores
 y repartidores; configura `manejaMedioLitro`, sabores, disponibilidad de
-presentaciones por sabor y stock objetivo; consulta existencias, pedidos y
-bitácora. Las presentaciones iniciales se mantienen limitadas a los tamaños
-de 1 L y 1/2 L; no se crean tamaños adicionales durante el MVP.
+presentaciones por sabor, stock objetivo de clientes y objetivo base de
+sucursales; consulta existencias, pedidos y bitácora. Las presentaciones
+iniciales se mantienen limitadas a 1 L y 1/2 L; no se crean tamaños
+adicionales durante el MVP.
 
 **Repartidor:** selecciona manualmente un repartidor activo y un cliente activo;
 consulta objetivos, marca su llegada y registra existencias. No crea sabores ni
@@ -127,7 +147,8 @@ calendario local anterior. La fecha de visita permanece como criterio aunque
 el snapshot se haya corregido después. Muestra detalle por tienda y
 consolidado por sabor/presentación a partir de `cantidadSolicitada`; fechas sin
 pedidos devuelven una respuesta vacía. No permite editar ni enviar pedidos.
-Sucursales y producción vespertina quedan fuera de este alcance.
+El flujo de Producción no implementa operaciones de sucursales ni producción
+vespertina.
 
 **Historial administrativo de visitas:** `/admin/visitas` consulta
 `VisitaCliente.llegadaAt` como fuente de verdad, en el día calendario de

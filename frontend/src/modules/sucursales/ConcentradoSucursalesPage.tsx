@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Link } from 'react-router';
 import { sucursalesApi, type NecesidadDetalle } from '../../shared/api/sucursales';
 
 export function ConcentradoSucursalesPage() {
@@ -32,7 +33,7 @@ export function ConcentradoSucursalesPage() {
   }
 
   return <main className="min-h-screen bg-slate-50 text-slate-900">
-    <header className="bg-fuchsia-800 px-4 py-4 text-white"><div className="mx-auto flex max-w-6xl items-center justify-between"><a href="/" className="font-semibold underline">Unicornio</a><span>Necesidades de sucursales · Fer / Jonathan</span></div></header>
+    <header className="bg-fuchsia-800 px-4 py-4 text-white"><div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3"><Link to="/" className="font-semibold underline">Unicornio</Link><nav className="flex flex-wrap gap-4"><span>Necesidades · Fer / Jonathan</span><Link to="/sucursales/stock-objetivo" className="underline">Stock objetivo base</Link><Link to="/inventario-sucursales" className="underline">Inventario por turno</Link></nav></div></header>
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-6">
       <section className="rounded-xl bg-white p-5 shadow-sm"><h1 className="text-2xl font-bold">Concentrado de necesidades</h1><p className="mt-1 text-slate-600">Registra necesidades declaradas por sucursal. No representa inventario físico ni producción fabricada.</p><div className="mt-4 flex flex-wrap items-end gap-3"><label className="grid gap-1 text-sm">Fecha operativa<input type="date" value={fechaOperativa} onChange={(e) => { setFecha(e.currentTarget.value); setItems([]); setNotice(''); }} className="min-h-11 rounded border px-3" /></label><label className="grid gap-1 text-sm">Sucursal<select value={sucursalId} onChange={(e) => { setSucursalId(e.currentTarget.value ? Number(e.currentTarget.value) : ''); setItems([]); setNotice(''); }} className="min-h-11 min-w-52 rounded border px-3"><option value="">Seleccionar</option>{sucursales.data?.filter((item) => item.activo).map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></label></div></section>
       {(sucursales.isPending || sabores.isPending || report.isPending) && <p role="status" className="rounded bg-white p-4">Cargando concentrado…</p>}

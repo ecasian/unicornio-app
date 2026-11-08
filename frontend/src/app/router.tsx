@@ -8,6 +8,8 @@ import { RepartidorInicioPage } from '../modules/repartidor-inicio/RepartidorIni
 import { ProduccionPage } from '../modules/produccion/ProduccionPage';
 import { VisitasPage } from '../modules/admin-visitas/VisitasPage';
 import { ConcentradoSucursalesPage } from '../modules/sucursales/ConcentradoSucursalesPage';
+import { CapturaInventarioPage } from '../modules/inventario-sucursales/CapturaInventarioPage';
+import { ConsultaInventarioPage } from '../modules/inventario-sucursales/ConsultaInventarioPage';
 import { YogurtBasePage } from '../modules/yogurt-base/YogurtBasePage';
 
 export function AppRouter() {
@@ -19,6 +21,8 @@ export function AppRouter() {
       <Route path="/produccion/base" element={<YogurtBasePage />} />
       <Route path="/admin/visitas" element={<VisitasPage />} />
       <Route path="/sucursales" element={<ConcentradoSucursalesPage />} />
+      <Route path="/inventario-sucursales" element={<CapturaInventarioPage />} />
+      <Route path="/inventario-sucursales/consulta" element={<ConsultaInventarioPage />} />
       <Route path="/admin/clientes" element={<ClientesPage />} />
       <Route path="/admin/clientes/:clienteId/stock-objetivo" element={<StockObjetivoPage />} />
       <Route path="/admin/repartidores" element={<RepartidoresPage />} />

@@ -12,6 +12,7 @@ import { CapturaInventarioPage } from '../modules/inventario-sucursales/CapturaI
 import { ConsultaInventarioPage } from '../modules/inventario-sucursales/ConsultaInventarioPage';
 import { YogurtBasePage } from '../modules/yogurt-base/YogurtBasePage';
 import { StockObjetivoSucursalPage } from '../modules/sucursales/StockObjetivoSucursalPage';
+import { PropuestaAbastecimientoPage } from '../modules/propuesta-abastecimiento/PropuestaAbastecimientoPage';
 
 export function AppRouter() {
   return (
@@ -23,6 +24,7 @@ export function AppRouter() {
       <Route path="/admin/visitas" element={<VisitasPage />} />
       <Route path="/sucursales" element={<ConcentradoSucursalesPage />} />
       <Route path="/sucursales/stock-objetivo" element={<StockObjetivoSucursalPage />} />
+      <Route path="/sucursales/propuesta-abastecimiento" element={<PropuestaAbastecimientoPage />} />
       <Route path="/inventario-sucursales" element={<CapturaInventarioPage />} />
       <Route path="/inventario-sucursales/consulta" element={<ConsultaInventarioPage />} />
       <Route path="/admin/clientes" element={<ClientesPage />} />

@@ -49,6 +49,7 @@ model Sabor {
   acondicionamientos AcondicionamientoYogurtBase[]
   inventariosSucursal DetalleInventarioSucursal[]
   objetivosSucursal StockObjetivoSucursal[]
+  detallesPropuestaAbastecimiento DetallePropuestaAbastecimiento[]
 }
 
 model LoteYogurtBase {
@@ -91,6 +92,7 @@ model Sucursal {
   necesidades NecesidadSucursal[]
   reportesInventario ReporteInventarioSucursal[]
   stockObjetivos StockObjetivoSucursal[]
+  propuestasAbastecimiento PropuestaAbastecimiento[]
 }
 
 model StockObjetivoSucursal {
@@ -103,6 +105,50 @@ model StockObjetivoSucursal {
   sabor Sabor @relation(fields: [saborId], references: [id], onDelete: Restrict)
 
   @@id([sucursalId, saborId])
+  @@index([saborId])
+}
+
+enum EstadoPropuestaAbastecimiento {
+  BORRADOR
+  CONFIRMADA
+}
+
+enum EstadoReferenciaAbastecimiento {
+  DISPONIBLE
+  SIN_DATOS
+}
+
+model PropuestaAbastecimiento {
+  id Int @id @default(autoincrement())
+  sucursalId Int
+  fecha DateTime @db.Date
+  version Int
+  estado EstadoPropuestaAbastecimiento @default(BORRADOR)
+  fuenteReporteId Int?
+  fuenteFecha DateTime? @db.Date
+  fuenteTurno TurnoInventarioSucursal?
+  fuenteConfirmadoAt DateTime?
+  creadaAt DateTime @default(now())
+  confirmadaAt DateTime?
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
+  fuenteReporte ReporteInventarioSucursal? @relation(fields: [fuenteReporteId], references: [id], onDelete: Restrict)
+  detalles DetallePropuestaAbastecimiento[]
+  @@unique([sucursalId, fecha, version])
+  @@index([sucursalId, fecha, estado, version])
+}
+
+model DetallePropuestaAbastecimiento {
+  propuestaId Int
+  saborId Int
+  estadoReferencia EstadoReferenciaAbastecimiento
+  objetivoLitros Decimal? @db.Decimal(14, 3)
+  objetivoActualizadoAt DateTime?
+  existenciaLitros Decimal? @db.Decimal(14, 3)
+  sugerenciaLitros Decimal? @db.Decimal(14, 3)
+  decisionLitros Decimal? @db.Decimal(14, 3)
+  propuesta PropuestaAbastecimiento @relation(fields: [propuestaId], references: [id], onDelete: Restrict)
+  sabor Sabor @relation(fields: [saborId], references: [id], onDelete: Restrict)
+  @@id([propuestaId, saborId])
   @@index([saborId])
 }
 
@@ -128,6 +174,7 @@ model ReporteInventarioSucursal {
   updatedAt DateTime @updatedAt
   sucursal Sucursal @relation(fields: [sucursalId], references: [id], onDelete: Restrict)
   detalles DetalleInventarioSucursal[]
+  propuestasAbastecimiento PropuestaAbastecimiento[]
 
   @@unique([sucursalId, fecha, turno])
   @@index([fecha, turno, estado])

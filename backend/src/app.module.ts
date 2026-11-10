@@ -14,6 +14,7 @@ import { SucursalesModule } from './modules/sucursales/sucursales.module.js';
 import { YogurtBaseModule } from './modules/yogurt-base/yogurt-base.module.js';
 import { InventarioSucursalesModule } from './modules/inventario-sucursales/inventario-sucursales.module.js';
 import { StockObjetivoSucursalesModule } from './modules/stock-objetivo-sucursales/stock-objetivo-sucursales.module.js';
+import { PropuestaAbastecimientoModule } from './modules/propuesta-abastecimiento/propuesta-abastecimiento.module.js';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { StockObjetivoSucursalesModule } from './modules/stock-objetivo-sucursal
     YogurtBaseModule,
     InventarioSucursalesModule,
     StockObjetivoSucursalesModule,
+    PropuestaAbastecimientoModule,
   ],
 })
 export class AppModule {}

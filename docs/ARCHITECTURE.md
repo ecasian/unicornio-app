@@ -32,6 +32,7 @@ docs/                  decisiones y referencias del producto
 | Catálogo | Sabores, las dos presentaciones iniciales y disponibilidad por sabor. |
 | Stock objetivo de clientes | Cantidades configuradas por el administrador para el surtido de cada cliente externo. |
 | Stock objetivo de sucursales | Objetivo base permanente en litros por sucursal y sabor; separado del inventario por turno y del concentrado de necesidades. |
+| Propuesta diaria de abastecimiento de sucursales | Snapshot versionado de referencia y decisión humana; no crea pedidos ni movimientos de inventario. |
 | Visitas | Registra la llegada del repartidor al cliente antes del levantamiento. |
 | Historial administrativo de visitas | Consulta de solo lectura de llegadas por día, cliente y repartidor. |
 | Existencias | Captura y consulta de snapshots completos e históricos. |
@@ -55,6 +56,8 @@ movimientos, sin ventas contables.
 | `Cliente` | `id`, `nombre`, `celular`, `direccion`, `manejaMedioLitro`, `activo`, `createdAt`, `updatedAt` | Tiene objetivos, visitas, snapshots, pedidos y movimientos. No se relaciona con sucursales. |
 | `Sucursal` | `id`, `nombre`, `activo`, `createdAt`, `updatedAt` | Tiene concentrados de necesidades, inventarios por fecha/turno y objetivos base. |
 | `StockObjetivoSucursal` | `sucursalId`, `saborId`, `litros Decimal(14,3)`, `createdAt`, `updatedAt` | Clave única por sucursal y sabor. Una fila con cero es objetivo explícito; sin fila significa no configurado. |
+| `PropuestaAbastecimiento` | `sucursalId`, `fecha`, `version`, estado, snapshot de reporte fuente y timestamps | Versiones por sucursal/fecha. La versión más reciente es la actual; confirmadas e históricas se preservan. |
+| `DetallePropuestaAbastecimiento` | `propuestaId`, `saborId`, estado de referencia, objetivo/existencia/sugerencia/decisión `Decimal(14,3)` | Snapshot inmutable de entradas al calcular; decisión nullable hasta captura explícita; `SIN_DATOS` no se interpreta como cero. |
 | `Repartidor` | `id`, `nombre`, `activo`, `createdAt`, `updatedAt` | Identifica visitas, snapshots, pedidos y movimientos. No tiene otros campos en el MVP. |
 | `Sabor` | `id`, `nombre`, `activo`, `createdAt`, `updatedAt` | Se relaciona con presentaciones mediante `SaborPresentacion` y aparece en los detalles. |
 | `Presentacion` | `id`, `nombre`, `litrosEquivalentes`, `createdAt`, `updatedAt` | Valores iniciales: 1 litro (`1`) y 1/2 litro (`0.5`); no se crean otros tamaños en el MVP. |
@@ -126,6 +129,18 @@ entidades porque su resultado se calcula y no se persiste.
 13. Los ajustes de cantidad por jornada pertenecen a otro slice y nunca
     sobrescriben este objetivo base. No se aplica al inventario de sucursales
     el umbral del 50% usado en el dominio de clientes externos.
+14. La propuesta para fecha D usa exclusivamente el inventario VESPERTINO
+    confirmado de D−1; no combina turnos ni usa borradores. La sugerencia es
+    `max(objetivo − existencia, 0)` solo cuando ambas entradas existen.
+    Cuando alguna falta, se marca `SIN_DATOS`, no se asigna sugerencia y Fer o
+    Jonathan pueden ingresar una decisión manual explícita, incluso cero.
+15. Una propuesta permanece BORRADOR hasta confirmación; la cantidad decidida
+    es editable solo en borrador y requiere una entrada explícita para cada
+    sabor activo. La confirmación la vuelve inmutable. Si cambia la fuente del
+    borrador, la confirmación queda bloqueada; recalcular crea una nueva
+    versión con nuevas sugerencias y decisiones manuales sin definir, dejando
+    intacta la versión anterior. Una versión confirmada puede seguirse de una
+    nueva versión, que tampoco sobrescribe el historial.
 
 ## Responsabilidades por vista
 

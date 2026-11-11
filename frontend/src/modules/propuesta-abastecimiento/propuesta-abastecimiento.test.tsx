@@ -49,6 +49,16 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe('Propuesta diaria UX', () => {
+  it('opens a proposal selected from the consolidated summary link', async () => {
+    created = true;
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/sucursales/propuesta-abastecimiento?fecha=2026-11-09&propuestaId=8']}><PropuestaAbastecimientoPage /></MemoryRouter></QueryClientProvider>));
+    await flush(); await flush();
+    expect((container.querySelector('input[type="date"]') as HTMLInputElement).value).toBe('2026-11-09');
+    expect(container.textContent).toContain('Centro · 2026-11-09 · versión 1');
+    expect(calls.some((call) => call.url.endsWith('/propuestas-abastecimiento/8'))).toBe(true);
+  });
+
   it('shows source and SIN DATOS, saves an explicit manual amount, and confirms without creating an order', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
     await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter><PropuestaAbastecimientoPage /></MemoryRouter></QueryClientProvider>));

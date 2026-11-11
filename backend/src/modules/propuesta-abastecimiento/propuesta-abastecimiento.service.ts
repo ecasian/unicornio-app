@@ -1,8 +1,9 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { EstadoInventarioSucursal, EstadoPropuestaAbastecimiento, EstadoReferenciaAbastecimiento, Prisma, TurnoInventarioSucursal } from '@prisma/client';
+import { EstadoPropuestaAbastecimiento, Prisma } from '@prisma/client';
 import { PrismaService } from '../../db/prisma.service.js';
 import { DEFAULT_BUSINESS_TIMEZONE, resolveBusinessDate } from '../produccion/business-date.js';
+import { loadPropuestaSources, propuestaObsoleta } from './propuesta-abastecimiento.source.js';
 
 const includeProposal = { sucursal: { select: { id: true, nombre: true, activo: true } }, fuenteReporte: { select: { id: true, fecha: true, turno: true, confirmadoAt: true } }, detalles: { include: { sabor: { select: { id: true, nombre: true, activo: true } } }, orderBy: { saborId: 'asc' as const } } };
 
@@ -16,56 +17,11 @@ export class PropuestaAbastecimientoService {
     catch (error) { throw new BadRequestException(error instanceof Error ? error.message : 'Fecha inválida'); }
   }
 
-  private sourceDate(fecha: string) {
-    const date = new Date(`${fecha}T00:00:00.000Z`);
-    date.setUTCDate(date.getUTCDate() - 1);
-    return date;
-  }
-
-  private async source(tx: Prisma.TransactionClient, sucursalId: number, fecha: string) {
-    const sourceDay = this.sourceDate(fecha);
-    const report = await tx.reporteInventarioSucursal.findUnique({
-      where: { sucursalId_fecha_turno: { sucursalId, fecha: sourceDay, turno: TurnoInventarioSucursal.VESPERTINO } },
-      include: { detalles: { orderBy: { saborId: 'asc' } } },
-    });
-    const confirmed = report?.estado === EstadoInventarioSucursal.CONFIRMADO ? report : null;
-    const [goals, flavors] = await Promise.all([
-      tx.stockObjetivoSucursal.findMany({ where: { sucursalId }, orderBy: { saborId: 'asc' } }),
-      tx.sabor.findMany({ where: { activo: true }, select: { id: true }, orderBy: { id: 'asc' } }),
-    ]);
-    const objectiveByFlavor = new Map(goals.map((item) => [item.saborId, { litros: item.litros, updatedAt: item.updatedAt }]));
-    const existenceByFlavor = new Map((confirmed?.detalles ?? []).map((item) => [item.saborId, item.litros]));
-    const ids = [...new Set([...flavors.map(({ id }) => id), ...goals.map(({ saborId }) => saborId), ...(confirmed?.detalles ?? []).map(({ saborId }) => saborId)])].sort((a, b) => a - b);
-    const details = ids.map((saborId) => {
-      const objective = objectiveByFlavor.get(saborId);
-      const objetivo = objective?.litros ?? null;
-      const existencia = existenceByFlavor.get(saborId) ?? null;
-      const complete = objetivo !== null && existencia !== null;
-      return {
-        saborId,
-        estadoReferencia: complete ? EstadoReferenciaAbastecimiento.DISPONIBLE : EstadoReferenciaAbastecimiento.SIN_DATOS,
-        objetivoLitros: objetivo,
-        objetivoActualizadoAt: objective?.updatedAt ?? null,
-        existenciaLitros: existencia,
-        sugerenciaLitros: complete ? Prisma.Decimal.max(objetivo.minus(existencia), new Prisma.Decimal(0)) : null,
-        decisionLitros: complete ? Prisma.Decimal.max(objetivo.minus(existencia), new Prisma.Decimal(0)) : null,
-      };
-    });
-    return { report: confirmed, details };
-  }
-
   private async serialize(tx: Prisma.TransactionClient | PrismaService, id: number) {
     const proposal = await tx.propuestaAbastecimiento.findUnique({ where: { id }, include: includeProposal });
     if (!proposal) throw new NotFoundException('Propuesta no encontrada');
-    const sourceNow = await this.source(tx as Prisma.TransactionClient, proposal.sucursalId, proposal.fecha.toISOString().slice(0, 10));
-    const sourceIdentity = (report: typeof sourceNow.report) => report ? `${report.id}:${report.confirmadoAt?.toISOString() ?? ''}` : 'none';
-    const sourceSnapshotMatches = sourceIdentity(sourceNow.report) === sourceIdentity(proposal.fuenteReporte as typeof sourceNow.report);
-    const current = new Map(sourceNow.details.map((item) => [item.saborId, item]));
-    const detailsMatch = proposal.detalles.length === current.size && proposal.detalles.every((item) => {
-      const now = current.get(item.saborId);
-      return Boolean(now && (item.objetivoLitros?.equals(now.objetivoLitros ?? new Prisma.Decimal(-1)) ?? now.objetivoLitros === null) && item.objetivoActualizadoAt?.toISOString() === now.objetivoActualizadoAt?.toISOString() && (item.existenciaLitros?.equals(now.existenciaLitros ?? new Prisma.Decimal(-1)) ?? now.existenciaLitros === null));
-    });
-    const obsoleta = !sourceSnapshotMatches || !detailsMatch;
+    const sourceNow = (await loadPropuestaSources(tx as Prisma.TransactionClient, [proposal.sucursalId], proposal.fecha.toISOString().slice(0, 10))).get(proposal.sucursalId)!;
+    const obsoleta = propuestaObsoleta(proposal, sourceNow);
     return {
       id: proposal.id, sucursalId: proposal.sucursalId, sucursal: proposal.sucursal,
       fecha: proposal.fecha.toISOString().slice(0, 10), timezone: this.timezone, version: proposal.version,
@@ -104,7 +60,7 @@ export class PropuestaAbastecimientoService {
         if (!branch.activo) throw new BadRequestException('No se pueden crear propuestas para una sucursal inactiva');
         const latest = await tx.propuestaAbastecimiento.findFirst({ where: { sucursalId, fecha: day }, orderBy: { version: 'desc' } });
         if (latest?.estado === EstadoPropuestaAbastecimiento.BORRADOR) throw new ConflictException('Ya existe un borrador; edítalo o recalcula su fuente');
-        const next = await this.source(tx, sucursalId, fecha);
+        const next = (await loadPropuestaSources(tx, [sucursalId], fecha)).get(sucursalId)!;
         const proposal = await tx.propuestaAbastecimiento.create({ data: { sucursalId, fecha: day, version: (latest?.version ?? 0) + 1, fuenteReporteId: next.report?.id ?? null, fuenteFecha: next.report?.fecha ?? null, fuenteTurno: next.report?.turno ?? null, fuenteConfirmadoAt: next.report?.confirmadoAt ?? null, detalles: { create: next.details } } });
         return proposal.id;
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -148,7 +104,7 @@ export class PropuestaAbastecimientoService {
         if (!latest || latest.id !== id) throw new ConflictException('Solo la versión más reciente puede recalcularse');
         const stale = await this.serialize(tx, id) as { obsoleta: boolean };
         if (!stale.obsoleta) throw new ConflictException('La fuente no cambió; no es necesario recalcular');
-        const source = await this.source(tx, proposal.sucursalId, proposal.fecha.toISOString().slice(0, 10));
+        const source = (await loadPropuestaSources(tx, [proposal.sucursalId], proposal.fecha.toISOString().slice(0, 10))).get(proposal.sucursalId)!;
         const next = await tx.propuestaAbastecimiento.create({ data: { sucursalId: proposal.sucursalId, fecha: proposal.fecha, version: proposal.version + 1, fuenteReporteId: source.report?.id ?? null, fuenteFecha: source.report?.fecha ?? null, fuenteTurno: source.report?.turno ?? null, fuenteConfirmadoAt: source.report?.confirmadoAt ?? null, detalles: { create: source.details } } });
         return next.id;
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });

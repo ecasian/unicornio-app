@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, type MouseEvent } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { sucursalesApi } from '../../shared/api/sucursales';
 import { propuestasAbastecimientoApi, type PropuestaAbastecimiento } from '../../shared/api/propuestas-abastecimiento';
 
@@ -8,7 +8,10 @@ const proposalKey = (fecha: string) => ['propuestas-abastecimiento', fecha] as c
 
 export function PropuestaAbastecimientoPage() {
   const client = useQueryClient();
-  const [fecha, setFecha] = useState('');
+  const [searchParams] = useSearchParams();
+  const linkedProposalId = Number(searchParams.get('propuestaId'));
+  const [ignoreLinkedProposal, setIgnoreLinkedProposal] = useState(false);
+  const [fecha, setFecha] = useState(() => searchParams.get('fecha') ?? '');
   const [sucursalId, setSucursalId] = useState<number | ''>('');
   const [propuesta, setPropuesta] = useState<PropuestaAbastecimiento | null>(null);
   const [decisiones, setDecisiones] = useState<Record<number, string>>({});
@@ -16,10 +19,13 @@ export function PropuestaAbastecimientoPage() {
   const [notice, setNotice] = useState('');
   const branches = useQuery({ queryKey: ['sucursales'], queryFn: sucursalesApi.list });
   const list = useQuery({ queryKey: proposalKey(fecha), queryFn: () => propuestasAbastecimientoApi.list(fecha), enabled: Boolean(fecha) });
-  const queryKey = ['propuesta-abastecimiento', propuesta?.id] as const;
-  const detail = useQuery({ queryKey, queryFn: () => propuestasAbastecimientoApi.get(propuesta!.id), enabled: Boolean(propuesta?.id) });
-  const current = detail.data ?? propuesta;
-  const draftExists = list.data?.propuestas.some((item) => item.sucursalId === sucursalId && item.estado === 'BORRADOR') ?? false;
+  const linkedProposal = !ignoreLinkedProposal && Number.isInteger(linkedProposalId) && linkedProposalId > 0 ? list.data?.propuestas.find((item) => item.id === linkedProposalId) ?? null : null;
+  const currentProposal = propuesta ?? linkedProposal;
+  const selectedBranchId = sucursalId === '' ? linkedProposal?.sucursalId ?? '' : sucursalId;
+  const queryKey = ['propuesta-abastecimiento', currentProposal?.id] as const;
+  const detail = useQuery({ queryKey, queryFn: () => propuestasAbastecimientoApi.get(currentProposal!.id), enabled: Boolean(currentProposal?.id) });
+  const current = detail.data ?? currentProposal;
+  const draftExists = list.data?.propuestas.some((item) => item.sucursalId === selectedBranchId && item.estado === 'BORRADOR') ?? false;
 
   useEffect(() => {
     if (!dirty) return;
@@ -41,6 +47,7 @@ export function PropuestaAbastecimientoPage() {
   function guard(event: MouseEvent<HTMLAnchorElement>) { if (dirty && !window.confirm('Hay decisiones sin guardar. ¿Salir sin guardarlas?')) event.preventDefault(); }
   function pickProposal(item: PropuestaAbastecimiento) {
     if (dirty && !window.confirm('Hay decisiones sin guardar. ¿Descartarlas?')) return;
+    setIgnoreLinkedProposal(true);
     setPropuesta(item); setDecisiones(Object.fromEntries(item.detalles.map((detail) => [detail.saborId, detail.decisionLitros ?? '']))); setDirty(false); setNotice('');
   }
 
@@ -48,7 +55,7 @@ export function PropuestaAbastecimientoPage() {
     <header className="bg-fuchsia-800 px-4 py-4 text-white"><div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3"><Link to="/" onClick={guard} className="font-semibold underline">Unicornio</Link><nav className="flex flex-wrap gap-4"><Link to="/sucursales" onClick={guard} className="underline">Concentrado</Link><Link to="/inventario-sucursales" onClick={guard} className="underline">Inventario por turno</Link><span>Propuesta diaria</span></nav></div></header>
     <div className="mx-auto max-w-6xl space-y-5 px-4 py-6">
       <section className="rounded-xl bg-white p-5 shadow-sm"><h1 className="text-2xl font-bold">Propuesta de abastecimiento diario</h1><p className="mt-1 text-slate-600">La referencia es el inventario vespertino confirmado del día anterior y el objetivo base. Esta propuesta no crea pedidos ni modifica inventarios.</p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-3"><label className="grid gap-1 text-sm">Fecha de abastecimiento<input type="date" value={fecha} onChange={(event) => { if (dirty && !window.confirm('Descartar decisiones sin guardar?')) return; setFecha(event.currentTarget.value); setPropuesta(null); setDirty(false); setNotice(''); }} className="min-h-11 rounded border px-3" /></label><label className="grid gap-1 text-sm">Sucursal<select value={sucursalId} onChange={(event) => { if (dirty && !window.confirm('Descartar decisiones sin guardar?')) return; setSucursalId(event.currentTarget.value ? Number(event.currentTarget.value) : ''); setPropuesta(null); setDirty(false); setNotice(''); }} className="min-h-11 rounded border px-3"><option value="">Seleccionar sucursal</option>{branches.data?.map((branch) => <option key={branch.id} value={branch.id}>{branch.nombre}{branch.activo ? '' : ' · inactiva'}</option>)}</select></label><button type="button" disabled={!fecha || !sucursalId || list.isPending || draftExists || create.isPending || !branches.data?.find((item) => item.id === sucursalId)?.activo} onClick={() => create.mutate()} className="min-h-11 self-end rounded bg-fuchsia-800 px-4 font-semibold text-white disabled:opacity-50">{create.isPending ? 'Preparando…' : 'Crear / nueva versión'}</button></div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3"><label className="grid gap-1 text-sm">Fecha de abastecimiento<input type="date" value={fecha} onChange={(event) => { if (dirty && !window.confirm('Descartar decisiones sin guardar?')) return; setIgnoreLinkedProposal(true); setFecha(event.currentTarget.value); setPropuesta(null); setSucursalId(''); setDirty(false); setNotice(''); }} className="min-h-11 rounded border px-3" /></label><label className="grid gap-1 text-sm">Sucursal<select value={selectedBranchId} onChange={(event) => { if (dirty && !window.confirm('Descartar decisiones sin guardar?')) return; setIgnoreLinkedProposal(true); setSucursalId(event.currentTarget.value ? Number(event.currentTarget.value) : ''); setPropuesta(null); setDirty(false); setNotice(''); }} className="min-h-11 rounded border px-3"><option value="">Seleccionar sucursal</option>{branches.data?.map((branch) => <option key={branch.id} value={branch.id}>{branch.nombre}{branch.activo ? '' : ' · inactiva'}</option>)}</select></label><button type="button" disabled={!fecha || !selectedBranchId || list.isPending || draftExists || create.isPending || !branches.data?.find((item) => item.id === selectedBranchId)?.activo} onClick={() => create.mutate()} className="min-h-11 self-end rounded bg-fuchsia-800 px-4 font-semibold text-white disabled:opacity-50">{create.isPending ? 'Preparando…' : 'Crear / nueva versión'}</button></div>
       </section>
       {(branches.isPending || list.isPending || detail.isPending) && <p role="status" aria-live="polite" className="rounded bg-white p-4">Cargando sucursales y propuestas…</p>}
       {error && <div role="alert" className="rounded bg-red-100 p-4 text-red-900"><p>{error.message}</p><button type="button" onClick={() => { void branches.refetch(); if (fecha) void list.refetch(); if (propuesta) void detail.refetch(); }} className="mt-2 min-h-11 rounded bg-red-800 px-4 text-white">Reintentar</button></div>}

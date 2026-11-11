@@ -13,6 +13,7 @@ import { ConsultaInventarioPage } from '../modules/inventario-sucursales/Consult
 import { YogurtBasePage } from '../modules/yogurt-base/YogurtBasePage';
 import { StockObjetivoSucursalPage } from '../modules/sucursales/StockObjetivoSucursalPage';
 import { PropuestaAbastecimientoPage } from '../modules/propuesta-abastecimiento/PropuestaAbastecimientoPage';
+import { AbastecimientoSucursalesPage } from '../modules/abastecimiento-sucursales/AbastecimientoSucursalesPage';
 
 export function AppRouter() {
   return (
@@ -20,6 +21,7 @@ export function AppRouter() {
       <Route path="/" element={<HealthPage />} />
       <Route path="/repartidor" element={<RepartidorInicioPage />} />
       <Route path="/produccion" element={<ProduccionPage />} />
+      <Route path="/produccion/abastecimiento-sucursales" element={<AbastecimientoSucursalesPage />} />
       <Route path="/produccion/base" element={<YogurtBasePage />} />
       <Route path="/admin/visitas" element={<VisitasPage />} />
       <Route path="/sucursales" element={<ConcentradoSucursalesPage />} />

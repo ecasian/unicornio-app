@@ -33,6 +33,7 @@ docs/                  decisiones y referencias del producto
 | Stock objetivo de clientes | Cantidades configuradas por el administrador para el surtido de cada cliente externo. |
 | Stock objetivo de sucursales | Objetivo base permanente en litros por sucursal y sabor; separado del inventario por turno y del concentrado de necesidades. |
 | Propuesta diaria de abastecimiento de sucursales | Snapshot versionado de referencia y decisión humana; no crea pedidos ni movimientos de inventario. |
+| Consolidado de abastecimiento aprobado | Consulta de solo lectura de la última versión por sucursal/fecha y suma únicamente las decisiones confirmadas no obsoletas. |
 | Visitas | Registra la llegada del repartidor al cliente antes del levantamiento. |
 | Historial administrativo de visitas | Consulta de solo lectura de llegadas por día, cliente y repartidor. |
 | Existencias | Captura y consulta de snapshots completos e históricos. |
@@ -141,6 +142,17 @@ entidades porque su resultado se calcula y no se persiste.
     versión con nuevas sugerencias y decisiones manuales sin definir, dejando
     intacta la versión anterior. Una versión confirmada puede seguirse de una
     nueva versión, que tampoco sobrescribe el historial.
+16. El consolidado diario usa la fecha calendario de `BUSINESS_TIMEZONE` y
+    selecciona una sola versión (la más reciente) por sucursal. Una última
+    versión BORRADOR se presenta como `PENDIENTE` y oculta cualquier
+    confirmación anterior; una versión obsoleta se presenta como
+    `REQUIERE_REVISION`. Solo se suman `decisionLitros` de la última versión
+    `CONFIRMADA` y vigente. Los detalles ausentes continúan como ausentes y el
+    cero explícito permanece visible. Sucursales inactivas se incluyen para
+    preservar la lectura histórica. El concentrado de cubetas, yogurt base,
+    inventario disponible y pedidos de clientes son fuentes separadas y no se
+    incluyen en este resumen. La lectura se ejecuta en `RepeatableRead` y no
+    cambia propuestas ni estados.
 
 ## Responsabilidades por vista
 
@@ -164,6 +176,16 @@ consolidado por sabor/presentación a partir de `cantidadSolicitada`; fechas sin
 pedidos devuelven una respuesta vacía. No permite editar ni enviar pedidos.
 El flujo de Producción no implementa operaciones de sucursales ni producción
 vespertina.
+
+**Consolidado de abastecimiento aprobado:**
+`/produccion/abastecimiento-sucursales` consulta en `BUSINESS_TIMEZONE` una
+fecha operativa (por defecto, hoy). Por cada sucursal muestra la última versión
+de propuesta: solo una confirmada y no obsoleta aporta litros decididos al
+detalle y consolidado; un borrador queda pendiente, una referencia obsoleta
+requiere revisión y la ausencia de propuesta se señala aparte. El total usa
+Decimal exacto y no representa producción fabricada ni inventario disponible.
+El concentrado de sucursales, YogurtBase y pedidos de clientes externos no se
+combinan con esta consulta. La vista es de solo lectura.
 
 **Historial administrativo de visitas:** `/admin/visitas` consulta
 `VisitaCliente.llegadaAt` como fuente de verdad, en el día calendario de

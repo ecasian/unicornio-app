@@ -4,6 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { withCsrfMock } from '../../test-utils';
 import { StockObjetivoSucursalPage } from './StockObjetivoSucursalPage';
 
 let container: HTMLDivElement;
@@ -23,10 +24,9 @@ function setValue(input: HTMLInputElement | HTMLSelectElement, value: string) {
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  vi.stubEnv('VITE_API_URL', 'http://localhost:3000/api');
   calls = []; saved = null;
   vi.stubGlobal('confirm', vi.fn(() => false));
-  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  vi.stubGlobal('fetch', withCsrfMock(vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input); calls.push({ url, init });
     if (url.endsWith('/sucursales')) return json(branches);
     if (url.endsWith('/sucursales/sabores')) return json(flavors);
@@ -38,7 +38,7 @@ beforeEach(() => {
     if (url.endsWith('/sucursales/1/stock-objetivo')) return json({ sucursal: { id: 1, nombre: 'Centro', activo: true }, objetivos: [{ saborId: 10, sabor: 'Fresa', saborActivo: true, litros: '0', createdAt: '', updatedAt: '' }, inactiveObjective] });
     if (url.includes('/stock-objetivo/comparacion?')) return json({ sucursal: { id: 1, nombre: 'Centro', activo: true }, fecha: '2026-11-07', turno: 'MATUTINO', inventarioEstado: 'CONFIRMADO', inventarioId: 5, comparaciones: [{ saborId: 10, sabor: 'Fresa', saborActivo: true, objetivoConfigurado: true, objetivoLitros: '0', existenciaRegistrada: true, existenciaLitros: '0.5', diferenciaLitros: '-0.5' }, { saborId: 20, sabor: 'Nuez', saborActivo: true, objetivoConfigurado: false, objetivoLitros: null, existenciaRegistrada: false, existenciaLitros: null, diferenciaLitros: null }] });
     return json({});
-  }));
+  })));
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../db/prisma.service.js';
+import { recordMutationSucceededInTransaction } from '../auth/audit-transaction.js';
 import { CreateVisitaClienteDto } from './dto/create-visita-cliente.dto.js';
 
 @Injectable()
@@ -19,9 +20,11 @@ export class VisitasService {
       if (!repartidor) throw new NotFoundException('Repartidor no encontrado');
       if (!repartidor.activo) throw new BadRequestException('El repartidor está inactivo');
 
-      return transaction.visitaCliente.create({
+      const result = await transaction.visitaCliente.create({
         data: { clienteId, repartidorId: data.repartidorId },
       });
+      await recordMutationSucceededInTransaction(transaction);
+      return result;
     });
   }
 }

@@ -1,0 +1,16 @@
+{
+	auto_https off
+}
+
+:{$PORT:8080} {
+	@api path /api /api/*
+	handle @api {
+		reverse_proxy {$BACKEND_UPSTREAM}
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

@@ -4,6 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { withCsrfMock } from '../../test-utils';
 import { ProduccionPage } from './ProduccionPage';
 
 const payload = {
@@ -38,9 +39,8 @@ const click = async (label: string) => {
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  vi.stubEnv('VITE_API_URL', 'http://localhost:3000/api');
   fetchMock = vi.fn(async () => json(payload));
-  vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('fetch', withCsrfMock(fetchMock));
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);
 });
 
@@ -77,13 +77,13 @@ describe('ProduccionPage', () => {
       date.dispatchEvent(new Event('change', { bubbles: true }));
     });
     await flush();
-    expect(fetchMock.mock.calls.some(([url]) => url === 'http://localhost:3000/api/produccion?fecha=2026-10-04')).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => url === '/api/produccion?fecha=2026-10-04')).toBe(true);
     fetchMock.mockImplementation(async () => json({ fecha: '2026-10-04', timezone: 'America/Mexico_City', tiendas: [], consolidado: [] }));
     await act(async () => { await queryClient.invalidateQueries({ queryKey: ['produccion', '2026-10-04'] }); });
     await flush();
     expect(container.textContent).toContain('No hay pedidos vigentes');
     await click('Ayer');
-    expect(fetchMock.mock.calls.some(([url]) => url === 'http://localhost:3000/api/produccion')).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => url === '/api/produccion')).toBe(true);
   });
 
   it('shows an error with a retry action', async () => {
@@ -95,7 +95,7 @@ describe('ProduccionPage', () => {
 
   it('uses server default date first and does not expose edit or administrative actions', async () => {
     await renderPage();
-    expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:3000/api/produccion');
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/produccion');
     expect(container.textContent).not.toContain('Sucursales');
     expect(container.textContent).not.toContain('Guardar');
     expect([...container.querySelectorAll('button')].map((button) => button.textContent?.trim())).toEqual(['Ayer']);

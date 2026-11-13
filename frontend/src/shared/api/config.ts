@@ -1,12 +1,5 @@
-export class ApiConfigurationError extends Error {
-  constructor() {
-    super('Configuración incompleta: define VITE_API_URL.');
-    this.name = 'ApiConfigurationError';
-  }
-}
+export const API_BASE_PATH = '/api';
 
-export function getApiBaseUrl(value: string | undefined = import.meta.env.VITE_API_URL): string {
-  const trimmed = value?.trim();
-  if (!trimmed) throw new ApiConfigurationError();
-  return trimmed.replace(/\/+$/, '');
+export function getApiBaseUrl(): string {
+  return API_BASE_PATH;
 }

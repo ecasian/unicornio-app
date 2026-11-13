@@ -7,9 +7,13 @@ import { UpdateRepartidorDto } from './dto/update-repartidor.dto.js';
 export class RepartidoresService {
   constructor(private readonly prisma: PrismaService) {}
 
-  list(activo?: boolean) {
+  list(activo?: boolean, id?: number) {
+    const where = activo === undefined && id === undefined ? undefined : {
+      ...(activo === undefined ? {} : { activo }),
+      ...(id === undefined ? {} : { id }),
+    };
     return this.prisma.repartidor.findMany({
-      where: activo === undefined ? undefined : { activo },
+      where,
       orderBy: { id: 'asc' },
     });
   }

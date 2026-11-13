@@ -54,7 +54,10 @@ versionado si hubo un error. El pedido de producción se generará
 automáticamente a partir del levantamiento vigente.
 
 Las vistas representan flujos de trabajo, no permisos de seguridad.
-No hay autenticación ni usuarios reales en el MVP.
+El MVP original no autenticaba; el slice `feat/auth-rbac-audit` agrega usuarios
+internos, sesiones y autorización en backend. La selección manual del repartidor
+se conserva en la vista, pero una cuenta con rol `REPARTIDOR` solo puede operar
+con el `Repartidor` ligado a su usuario.
 
 ## Repartidores
 
@@ -178,8 +181,8 @@ crea ni envía pedidos. No implementar producción vespertina ni sucursales.
 opcionales por cliente y repartidor. Cada visita es un evento independiente:
 no deduplicar visitas del mismo cliente o repartidor en un día. Mostrar
 históricos aunque el cliente o repartidor esté actualmente inactivo.
-La vista administrativa todavía no es una barrera de seguridad; no implementar
-autenticación ni roles como parte de este módulo.
+La vista requiere el permiso `visitas:read`; la autorización no cambia la fuente
+de verdad ni las reglas de consulta del historial.
 
 ## Totales
 
@@ -223,13 +226,44 @@ Usar `createdAt` y `updatedAt` en catálogos y configuraciones modificables.
 Los registros históricos y movimientos llevan `createdAt` como fecha/hora
 del evento; sus detalles heredan la fecha/hora de la cabecera.
 
-## Fuera del MVP
+## Autenticación y autorización
+
+El frontend y `/api` comparten un solo origen. El Frontend usa Caddy como proxy
+inverso: `/api/*` conserva método, ruta, cuerpo y cookies al enviarse al Backend
+configurado por `BACKEND_UPSTREAM`. Vite usa `API_PROXY_TARGET` solo en el proxy
+local; el bundle consume rutas relativas `/api` y no contiene una URL privada.
+
+El Backend exige `PUBLIC_ORIGIN`, que debe ser el origen HTTP(S) exacto, sin
+ruta ni barra final. Las escrituras exigen `Origin` exacto y token CSRF asociado
+a la sesión. La sesión opaca se guarda por hash en PostgreSQL y viaja en cookie
+host-only, `HttpOnly`, `SameSite=Lax`, `Path=/`; `Secure` se activa cuando
+`PUBLIC_ORIGIN` usa HTTPS. No se usan JWT ni tokens en `localStorage`.
+
+Roles iniciales: `ADMIN_GENERAL`, `ADMIN_SUCURSALES`, `REPARTIDOR` y
+`OPERADOR_PRODUCCION`. Los permisos se guardan en tablas relacionales; las rutas
+sin matriz explícita se deniegan. El primer administrador se crea solo con el
+comando interactivo `npm run bootstrap:admin`, después de migrar la base; no hay
+credenciales por defecto. Cambiar roles, desactivar usuario o restablecer
+contraseña revoca sus sesiones. No se permite desactivar ni quitar el rol al
+último administrador general activo.
+
+`EventoAuditoria` conserva actor, acción, ruta, resultado, solicitud y los IDs
+de recurso disponibles sin guardar cuerpos de petición ni contraseñas. La
+tabla es append-only. Eventos de login fallido pueden no tener actor. Los
+movimientos históricos anteriores conservan actor nulo; no se atribuyen a
+usuarios retroactivamente.
+
+Las variables previstas para staging futuro son `BACKEND_UPSTREAM` en Frontend
+(URL privada completa del Backend, incluyendo el puerto informado por Railway),
+`PUBLIC_ORIGIN` en Backend (dominio HTTPS exacto de Frontend) y el `PORT`
+asignado al Frontend para que Caddy escuche. No se deben adivinar dominios ni
+puertos internos. Railway no se considera validado hasta probar proxy, cookies
+Secure, CSRF, sesiones y permisos en ese environment.
+
+## Fuera del alcance autorizado
 
 No implementar todavía:
 
-- autenticación
-- usuarios reales
-- permisos RBAC
 - dashboard
 - modelo predictivo
 - rutas

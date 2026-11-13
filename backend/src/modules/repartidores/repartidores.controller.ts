@@ -5,6 +5,8 @@ import { RepartidoresService } from './repartidores.service.js';
 import { CreateRepartidorDto } from './dto/create-repartidor.dto.js';
 import { UpdateRepartidorDto } from './dto/update-repartidor.dto.js';
 import { RepartidorResponseDto } from './dto/repartidor-response.dto.js';
+import { CurrentUser } from '../auth/auth.security.js';
+import type { AuthenticatedUser } from '../auth/auth.security.js';
 
 class ListRepartidoresQuery {
   @IsOptional()
@@ -22,8 +24,9 @@ export class RepartidoresController {
   @ApiOperation({ summary: 'Listar repartidores activos e inactivos' })
   @ApiQuery({ name: 'activo', required: false, enum: ['true', 'false'] })
   @ApiOkResponse({ description: 'Lista de repartidores', type: RepartidorResponseDto, isArray: true })
-  list(@Query() query: ListRepartidoresQuery) {
-    return this.repartidores.list(query.activo === undefined ? undefined : query.activo === 'true');
+  list(@Query() query: ListRepartidoresQuery, @CurrentUser() user?: AuthenticatedUser) {
+    const activo = query.activo === undefined ? undefined : query.activo === 'true';
+    return this.repartidores.list(activo, user?.roles.includes('REPARTIDOR') && !user.roles.includes('ADMIN_GENERAL') ? user.repartidorId ?? -1 : undefined);
   }
 
   @Get(':id')

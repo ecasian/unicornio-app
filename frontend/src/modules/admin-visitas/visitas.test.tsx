@@ -4,6 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { withCsrfMock } from '../../test-utils';
 import { VisitasPage } from './VisitasPage';
 
 const visits = {
@@ -70,7 +71,6 @@ async function changeSelect(name: string, value: string) {
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  vi.stubEnv('VITE_API_URL', 'http://localhost:3000/api');
   visitsPayload = visits;
   fetchMock = vi.fn(async (resource: string) => {
     if (resource.includes('/admin/visitas')) return json(visitsPayload);
@@ -78,7 +78,7 @@ beforeEach(() => {
     if (resource.endsWith('/repartidores')) return json(drivers);
     return json({ message: 'No encontrado' }, 404);
   });
-  vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('fetch', withCsrfMock(fetchMock));
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);
 });
 
@@ -92,7 +92,7 @@ afterEach(async () => {
 describe('VisitasPage', () => {
   it('loads without a date, reflects the server date, and renders repeated visits in received order', async () => {
     await renderPage();
-    expect(fetchMock.mock.calls.some(([url]) => url === 'http://localhost:3000/api/admin/visitas')).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => url === '/api/admin/visitas')).toBe(true);
     expect(dateInput().value).toBe('2026-10-07');
     expect(container.querySelector('nav[aria-label="Navegación de Administrador"]')?.textContent).toContain('Visitas');
     expect(container.querySelector('a[href="/admin/visitas"]')).toBeNull();
@@ -139,7 +139,7 @@ describe('VisitasPage', () => {
     await changeSelect('Cliente', '2');
     await changeSelect('Repartidor', '3');
     const requested = fetchMock.mock.calls.map(([url]) => String(url)).find((url) => url.includes('fecha=2026-10-05') && url.includes('clienteId=2') && url.includes('repartidorId=3'));
-    expect(requested).toBe('http://localhost:3000/api/admin/visitas?fecha=2026-10-05&clienteId=2&repartidorId=3');
+    expect(requested).toBe('/api/admin/visitas?fecha=2026-10-05&clienteId=2&repartidorId=3');
     expect(container.querySelector('tbody tr')?.textContent).toContain('Beto');
     expect(container.querySelectorAll('tbody tr')[1].textContent).toContain('Ana');
   });

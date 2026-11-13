@@ -4,6 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { withCsrfMock } from '../../test-utils';
 import { ConcentradoSucursalesPage } from './ConcentradoSucursalesPage';
 
 const branch = { id: 1, nombre: 'Sucursal de prueba', activo: true, createdAt: '', updatedAt: '' };
@@ -26,7 +27,6 @@ async function renderPage() {
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  vi.stubEnv('VITE_API_URL', 'http://localhost:3000/api');
   confirmed = false;
   savedDetails = [];
   fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -44,7 +44,7 @@ beforeEach(() => {
     }
     throw new Error(`Unexpected request: ${url}`);
   });
-  vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('fetch', withCsrfMock(fetchMock));
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);
 });
 

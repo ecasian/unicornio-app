@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Cliente, Prisma, SaborPresentacion } from '@prisma/client';
 import { PrismaService } from '../../db/prisma.service.js';
+import { recordMutationSucceededInTransaction } from '../auth/audit-transaction.js';
 import { ReplaceStockObjetivoDto } from './dto/replace-stock-objetivo.dto.js';
 
 const details = {
@@ -121,11 +122,13 @@ export class StockObjetivoService {
           update: { cantidad },
         });
       }
-      return transaction.stockObjetivo.findMany({
+      const result = await transaction.stockObjetivo.findMany({
         where: { clienteId },
         include: details,
         orderBy: [{ saborId: 'asc' }, { presentacionId: 'asc' }],
       });
+      await recordMutationSucceededInTransaction(transaction);
+      return result;
     }, { maxWait: 15000, timeout: 15000 });
   }
 }

@@ -4,31 +4,33 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { withCsrfMock } from '../../test-utils';
 import { YogurtBasePage } from './YogurtBasePage';
 
 let container: HTMLDivElement;
 let root: Root;
 let calls: Array<{ url: string; init?: RequestInit }>;
+let apiFetchMock: ReturnType<typeof vi.fn>;
 const json = (value: unknown) => new Response(JSON.stringify(value), { status: 200, headers: { 'Content-Type': 'application/json' } });
 const empty = { fecha: '2026-11-06', timezone: 'America/Mexico_City', reglasPendientes: [], lotes: [], resumen: { litrosBaseDisponibles: 0, litrosBaseProcesados: 0, litrosAcondicionadosObtenidos: 0 }, saboresDestino: [{ id: 1, nombre: 'Fresa' }], necesidadesSucursalReferencia: [] };
 const flush = async () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  vi.stubEnv('VITE_API_URL', 'http://localhost:3000/api');
   calls = [];
-  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  apiFetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input); calls.push({ url, init });
     if (url.includes('/yogurt-base?')) return json(empty);
     return json({ id: 1 });
-  }));
+  });
+  vi.stubGlobal('fetch', withCsrfMock(apiFetchMock));
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe('YogurtBasePage', () => {
   it('localizes connection failures and retries the API query', async () => {
-    vi.mocked(globalThis.fetch).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    apiFetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
     await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter><YogurtBasePage /></MemoryRouter></QueryClientProvider>));
     await flush();

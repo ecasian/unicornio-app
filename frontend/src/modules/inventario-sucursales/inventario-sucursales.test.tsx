@@ -4,6 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { withCsrfMock } from '../../test-utils';
 import { CapturaInventarioPage } from './CapturaInventarioPage';
 import { ConsultaInventarioPage } from './ConsultaInventarioPage';
 
@@ -24,9 +25,8 @@ function setValue(input: HTMLInputElement | HTMLSelectElement, value: string) {
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  vi.stubEnv('VITE_API_URL', 'http://localhost:3000/api');
   calls = []; report = null;
-  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  vi.stubGlobal('fetch', withCsrfMock(vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input); calls.push({ url, init });
     if (url.endsWith('/inventario-sucursales/captura')) return json(catalogs);
     if (url.includes('/inventario-sucursales/reporte?')) return json({ fecha: '2026-11-06', reporte: report });
@@ -36,9 +36,9 @@ beforeEach(() => {
       return json(report);
     }
     if (url.endsWith('/reportes/5/confirmacion')) { report = { ...report!, estado: 'CONFIRMADO', confirmadoAt: '2026-11-06T20:00:00.000Z' }; return json(report); }
-    if (url.endsWith('/inventario-sucursales') || url.includes('/inventario-sucursales?')) return json({ fecha: '2026-11-06', turno: new URL(url).searchParams.get('turno') || 'MATUTINO', timezone: catalogs.timezone, ultimoInventarioConfirmadoPorSucursal: [{ sucursalId: 1, sucursal: 'Centro', activo: true, reporte: null }], historicosAnterioresSinTurno: [], sucursalesPendientes: [{ id: 2, nombre: 'Norte', activo: true }], sucursales: [{ id: 4, sucursalId: 1, sucursal: 'Centro', fecha: '2026-11-06', estado: 'CONFIRMADO', confirmadoAt: '2026-11-06T20:00:00.000Z', createdAt: '2026-11-06T18:00:00.000Z', updatedAt: '2026-11-06T20:00:00.000Z', detalles: [{ saborId: 2, sabor: 'Fresa', litros: '0.5' }] }], consolidado: [{ saborId: 2, sabor: 'Fresa', litros: '0.5' }] });
+    if (url.endsWith('/inventario-sucursales') || url.includes('/inventario-sucursales?')) return json({ fecha: '2026-11-06', turno: new URL(url, 'http://local').searchParams.get('turno') || 'MATUTINO', timezone: catalogs.timezone, ultimoInventarioConfirmadoPorSucursal: [{ sucursalId: 1, sucursal: 'Centro', activo: true, reporte: null }], historicosAnterioresSinTurno: [], sucursalesPendientes: [{ id: 2, nombre: 'Norte', activo: true }], sucursales: [{ id: 4, sucursalId: 1, sucursal: 'Centro', fecha: '2026-11-06', estado: 'CONFIRMADO', confirmadoAt: '2026-11-06T20:00:00.000Z', createdAt: '2026-11-06T18:00:00.000Z', updatedAt: '2026-11-06T20:00:00.000Z', detalles: [{ saborId: 2, sabor: 'Fresa', litros: '0.5' }] }], consolidado: [{ saborId: 2, sabor: 'Fresa', litros: '0.5' }] });
     return json({});
-  }));
+  })));
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });

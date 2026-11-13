@@ -4,6 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { withCsrfMock } from '../../test-utils';
 import type { Cliente } from '../../shared/api/clientes';
 import type { StockObjetivoItem } from '../../shared/api/stock-objetivo';
 import { StockObjetivoPage } from './StockObjetivoPage';
@@ -60,7 +61,6 @@ async function renderPage(client = new QueryClient({ defaultOptions: { queries: 
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  vi.stubEnv('VITE_API_URL', 'http://localhost:3000/api');
   cliente = { ...initial }; stock = []; getCalls = 0; failStock = false; medioHabilitado = true; presentationCalls = 0;
   fetchMock = vi.fn(async (resource: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET';
@@ -74,7 +74,7 @@ beforeEach(() => {
     if (resource.endsWith('/sabores/1/presentaciones') && method === 'GET') { presentationCalls++; return json(presentaciones.map((item) => item.presentacionId === 2 ? { ...item, habilitada: medioHabilitado } : item)); }
     return json({ message: 'No encontrado' }, 404);
   });
-  vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('fetch', withCsrfMock(fetchMock));
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => { root.unmount(); }); container.remove(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
@@ -112,7 +112,7 @@ describe('StockObjetivoPage', () => {
     await fill('1/2 litro', '6');
     await click('Guardar stock objetivo');
     const put = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT');
-    expect(put?.[0]).toBe('http://localhost:3000/api/clientes/1/stock-objetivo');
+    expect(put?.[0]).toBe('/api/clientes/1/stock-objetivo');
     expect(JSON.parse(put?.[1]?.body as string)).toEqual({ combinaciones: [
       { saborId: 1, presentacionId: 1, cantidad: 0 }, { saborId: 1, presentacionId: 2, cantidad: 6 },
     ] });

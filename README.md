@@ -36,8 +36,8 @@ La aplicación usa el archivo `.env` en la raíz:
 | `POSTGRES_PORT` | Puerto publicado por Compose. |
 | `DATABASE_URL` | Conexión PostgreSQL para Prisma. |
 | `BACKEND_PORT` | Puerto de NestJS. |
-| `FRONTEND_URL` | Origen permitido por CORS. |
-| `VITE_API_URL` | URL base de la API que consume Vite. |
+| `API_PROXY_TARGET` | Destino local del proxy `/api` de Vite; por defecto `http://127.0.0.1:3000`. No se incluye en el bundle. |
+| `PUBLIC_ORIGIN` | Origen exacto desde el que se sirve la SPA, por defecto `http://127.0.0.1:4173`; se valida para CSRF y cookies. |
 | `BUSINESS_TIMEZONE` | Zona horaria para la fecha local de llegada y Producción; por defecto `America/Mexico_City`. |
 
 ## Iniciar PostgreSQL
@@ -64,13 +64,17 @@ npm run dev --prefix frontend
 
 URLs predeterminadas:
 
-- Frontend: `http://localhost:5173/`
-- Health: `http://localhost:3000/api/health`
-- Swagger: `http://localhost:3000/api/docs`
+- Frontend y API same-origin: `http://127.0.0.1:4173/`
+- Health: `http://127.0.0.1:4173/api/health`
+- Swagger local: `http://127.0.0.1:3000/api/docs`
 
-La pantalla inicial consulta el endpoint de health y muestra si la API está
-disponible. El health indica disponibilidad del backend; no comprueba el estado
-de PostgreSQL.
+La pantalla `/login` autentica usuarios internos. No existe una cuenta por
+defecto: el primer administrador se crea de forma interactiva con
+`npm run bootstrap:admin --prefix backend`, después de compilar y aplicar las
+migraciones. Antes de ese comando, confirma que `DATABASE_URL` apunta a la base
+local que quieres inicializar; no lo ejecutes contra staging o producción.
+`/api/health` indica disponibilidad del backend; no comprueba el estado de
+PostgreSQL.
 
 ## Inicio de Repartidor
 
@@ -210,48 +214,22 @@ recrea el environment o cambia el dominio, vuelve a verificar el destino antes
 de actualizar el script. Como staging no tiene autenticación, usa solo datos
 ficticios.
 
-## Staging en Railway
+## Configuración futura de Railway staging
 
-El proyecto Railway `unicornio-app` usa el environment `staging` con tres
-servicios. `Postgres` permanece en la red privada; `Backend` y `Frontend`
-tienen dominios HTTPS públicos. Cada aplicación se construye desde su propio
-directorio del monorepo (`/backend` y `/frontend`).
+Este slice no ha cambiado ni desplegado Railway. Al preparar el próximo deploy,
+conserva los servicios actuales y configura el Frontend como contenedor desde
+`frontend/Dockerfile`. Caddy sirve la SPA y proxy `/api/*` al Backend privado.
 
-| Servicio | Configuración |
-| --- | --- |
-| Backend | Build: `npx prisma generate && npm run build`; pre-deploy: `npx prisma migrate deploy`; start: `npm run start`; health check: `/api/health`. |
-| Frontend | Build: `npm run build`; start: `npm run start` (sirve `dist` en `$PORT` con fallback SPA); health check: `/`. |
-| Postgres | Base de datos privada, sin dominio TCP público. |
+Variables requeridas para esa configuración futura:
 
-Variables de `Backend` en `staging`:
+- Frontend: `BACKEND_UPSTREAM` debe ser la URL privada completa del Backend, con el puerto interno confirmado en Railway; `PORT` lo asigna la plataforma y Caddy lo usa para escuchar.
+- Backend: `PUBLIC_ORIGIN` debe ser el origen HTTPS exacto del Frontend, sin path ni barra final. Conserva `DATABASE_URL` y `BUSINESS_TIMEZONE` existentes.
+- El backend debe aceptar tráfico solo desde Caddy por red privada. Esto permite validar el `Origin` de la SPA y evita confiar en un `X-Forwarded-For` enviado directamente por un cliente.
+- No configurar `FRONTEND_URL` ni `VITE_API_URL`; el backend no usa CORS para este contrato y el bundle solo solicita rutas relativas `/api`.
 
-```text
-DATABASE_URL=${{Postgres.DATABASE_URL}}
-FRONTEND_URL=https://${{Frontend.RAILWAY_PUBLIC_DOMAIN}}
-```
-
-Variable de `Frontend` en `staging`:
-
-```text
-VITE_API_URL=https://${{Backend.RAILWAY_PUBLIC_DOMAIN}}/api
-```
-
-Railway asigna `PORT` a cada servicio web. El backend lo prioriza sobre
-`BACKEND_PORT` y escucha en `0.0.0.0`. `VITE_API_URL` se incorpora al frontend
-durante el build: si cambia el dominio del backend, vuelve a desplegar el
-frontend. Las migraciones Prisma se aplican en pre-deploy antes de iniciar el
-backend; un fallo de migración impide publicar esa versión.
-
-URLs de staging:
-
-- Frontend: https://frontend-staging-b7bb.up.railway.app/
-- Backend: https://backend-staging-f866.up.railway.app/api
-
-Por ahora el despliegue se hace desde el checkout local validado, primero
-Backend y después Frontend; la conexión automática con `main` queda pendiente.
-Para validar, abre `/`, `/repartidor` y `/admin/clientes` en el frontend y
-`/api/health` en el backend. El health indica que la API responde, no que la
-base de datos esté disponible.
-
-**Staging no tiene autenticación. Usa exclusivamente datos demo, nunca datos
-reales de clientes, teléfonos o direcciones.**
+No se fija aquí el host ni el puerto privado: deben verificarse en los metadatos
+de los servicios antes de configurar `BACKEND_UPSTREAM`. En producción o
+staging, no consideres autenticación validada hasta comprobar cookies `Secure`,
+proxy, CSRF, sesión, revocación y la matriz 401/403 directamente en ese
+environment. El staging actualmente desplegado permanece en su versión
+anterior hasta un deploy autorizado.

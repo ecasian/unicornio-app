@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { EstadoPedidoProduccion, TipoMovimiento, type Prisma } from '@prisma/client';
 import { PrismaService } from '../../db/prisma.service.js';
+import { recordMutationSucceededInTransaction } from '../auth/audit-transaction.js';
 import { STOCK_OBJETIVO_LOCK_NAMESPACE, StockObjetivoService } from '../stock-objetivo/stock-objetivo.service.js';
 import { CreateRegistroExistenciasDto } from './dto/create-registro-existencias.dto.js';
 import { CreateCorreccionExistenciasDto } from './dto/create-correccion-existencias.dto.js';
@@ -148,7 +149,9 @@ export class ExistenciasService {
         throw new BadRequestException('El surtido operativo cambió. Recarga el levantamiento antes de guardar.');
       }
 
-      return this.saveSnapshot(transaction, clienteId, data.repartidorId, visita.id, data.existencias, operativo);
+      const result = await this.saveSnapshot(transaction, clienteId, data.repartidorId, visita.id, data.existencias, operativo);
+      await recordMutationSucceededInTransaction(transaction);
+      return result;
     }, { maxWait: 15000, timeout: 15000 });
   }
 
@@ -184,8 +187,10 @@ export class ExistenciasService {
           where: { id: original.pedidoProduccion.id }, data: { estado: EstadoPedidoProduccion.SUSTITUIDO },
         });
       }
-      return this.saveSnapshot(transaction, clienteId, original.repartidorId, original.visitaClienteId,
+      const result = await this.saveSnapshot(transaction, clienteId, original.repartidorId, original.visitaClienteId,
         data.existencias, operativo, original.id);
+      await recordMutationSucceededInTransaction(transaction);
+      return result;
     }, { maxWait: 15000, timeout: 15000 });
   }
 }

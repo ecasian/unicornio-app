@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../db/prisma.service.js';
+import { recordMutationSucceededInTransaction } from '../auth/audit-transaction.js';
 import { CreateClienteDto } from './dto/create-cliente.dto.js';
 import { UpdateClienteDto } from './dto/update-cliente.dto.js';
 
@@ -21,11 +22,19 @@ export class ClientesService {
   }
 
   create(data: CreateClienteDto) {
-    return this.prisma.cliente.create({ data: { ...data, activo: true } });
+    return this.prisma.$transaction(async (tx) => {
+      const result = await tx.cliente.create({ data: { ...data, activo: true } });
+      await recordMutationSucceededInTransaction(tx);
+      return result;
+    });
   }
 
   async update(id: number, data: UpdateClienteDto) {
-    await this.get(id);
-    return this.prisma.cliente.update({ where: { id }, data });
+    return this.prisma.$transaction(async (tx) => {
+      if (!await tx.cliente.findUnique({ where: { id }, select: { id: true } })) throw new NotFoundException('Cliente no encontrado');
+      const result = await tx.cliente.update({ where: { id }, data });
+      await recordMutationSucceededInTransaction(tx);
+      return result;
+    });
   }
 }

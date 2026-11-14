@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { ConfigService } from '@nestjs/config';
 import { EstadoInventarioSucursal, Prisma, TurnoInventarioSucursal } from '@prisma/client';
 import { PrismaService } from '../../db/prisma.service.js';
+import { recordMutationSucceededInTransaction } from '../auth/audit-transaction.js';
 import { resolveBusinessDate, DEFAULT_BUSINESS_TIMEZONE } from '../produccion/business-date.js';
 import { ReemplazarStockObjetivoSucursalDto } from './dto.js';
 
@@ -81,7 +82,9 @@ export class StockObjetivoSucursalesService {
           });
         }
         const objetivos = await tx.stockObjetivoSucursal.findMany({ where: { sucursalId }, include: includeSabor, orderBy: { saborId: 'asc' } });
-        return { sucursal: { id: sucursal.id, nombre: sucursal.nombre, activo: sucursal.activo }, objetivos: objetivos.map(({ saborId, sabor, litros, createdAt, updatedAt }) => ({ saborId, sabor: sabor.nombre, saborActivo: sabor.activo, litros: litros.toString(), createdAt, updatedAt })) };
+        const result = { sucursal: { id: sucursal.id, nombre: sucursal.nombre, activo: sucursal.activo }, objetivos: objetivos.map(({ saborId, sabor, litros, createdAt, updatedAt }) => ({ saborId, sabor: sabor.nombre, saborActivo: sabor.activo, litros: litros.toString(), createdAt, updatedAt })) };
+        await recordMutationSucceededInTransaction(tx);
+        return result;
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && ['P2002', 'P2034'].includes(error.code)) {

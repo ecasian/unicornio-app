@@ -1,5 +1,4 @@
 import { Route, Routes } from 'react-router';
-import { HealthPage } from '../modules/health/HealthPage';
 import { ClientesPage } from '../modules/clientes/ClientesPage';
 import { RepartidoresPage } from '../modules/repartidores/RepartidoresPage';
 import { SaboresPage } from '../modules/catalogo/SaboresPage';
@@ -14,11 +13,16 @@ import { YogurtBasePage } from '../modules/yogurt-base/YogurtBasePage';
 import { StockObjetivoSucursalPage } from '../modules/sucursales/StockObjetivoSucursalPage';
 import { PropuestaAbastecimientoPage } from '../modules/propuesta-abastecimiento/PropuestaAbastecimientoPage';
 import { AbastecimientoSucursalesPage } from '../modules/abastecimiento-sucursales/AbastecimientoSucursalesPage';
+import { AdminUsersPage } from '../modules/auth/AdminUsersPage';
+import { AuditPage } from '../modules/auth/AuditPage';
+import { AuthenticatedLayout, HomePage, LoginPage } from './AuthPages';
 
 export function AppRouter() {
   return (
     <Routes>
-      <Route path="/" element={<HealthPage />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route element={<AuthenticatedLayout />}>
+      <Route path="/" element={<HomePage />} />
       <Route path="/repartidor" element={<RepartidorInicioPage />} />
       <Route path="/produccion" element={<ProduccionPage />} />
       <Route path="/produccion/abastecimiento-sucursales" element={<AbastecimientoSucursalesPage />} />
@@ -33,6 +37,9 @@ export function AppRouter() {
       <Route path="/admin/clientes/:clienteId/stock-objetivo" element={<StockObjetivoPage />} />
       <Route path="/admin/repartidores" element={<RepartidoresPage />} />
       <Route path="/admin/sabores" element={<SaboresPage />} />
+      <Route path="/admin/usuarios" element={<AdminUsersPage />} />
+      <Route path="/admin/auditoria" element={<AuditPage />} />
+      </Route>
     </Routes>
   );
 }

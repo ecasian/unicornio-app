@@ -4,9 +4,10 @@
 
 Aplicación web modular, con frontend y backend separados, API REST y una base
 PostgreSQL. Las vistas Administrador y Repartidor utilizan las mismas reglas de
-dominio del backend. No existe autenticación ni control de permisos en el MVP;
-la selección manual de repartidor sirve para atribuir registros, no para
-verificar identidad.
+dominio del backend. El MVP original no autenticaba; el slice
+`feat/auth-rbac-audit` agrega usuarios internos, sesiones y permisos de backend.
+La selección manual del repartidor permanece para el flujo, mientras que las
+cuentas con rol `REPARTIDOR` quedan ligadas a un único repartidor.
 
 Estructura propuesta para la implementación posterior:
 
@@ -70,6 +71,12 @@ movimientos, sin ventas contables.
 | `PedidoProduccion` | `id`, `clienteId`, `repartidorId`, `registroExistenciasId`, `estado`, `createdAt` | Referencia obligatoria y única al snapshot que lo originó; tiene detalles. Solo se crea si existe algún faltante positivo. `estado` es `VIGENTE` o `SUSTITUIDO`; los pedidos anteriores se conservan. |
 | `DetallePedido` | `pedidoProduccionId`, `saborId`, `presentacionId`, `cantidadSugerida`, `cantidadSolicitada` | Una fila por faltante positivo; hereda la fecha/hora de su cabecera. Ambas cantidades son iguales en este slice. |
 | `MovimientoBitacora` | `id`, `clienteId`, `repartidorId`, `createdAt`, `tipo`, `registroExistenciasId` nullable, `pedidoProduccionId` nullable | `createdAt` es la fecha/hora del movimiento. Exactamente una referencia, según `tipo`. |
+| `UsuarioInterno` | `id`, `nombre`, correo normalizado único, `passwordHash` Argon2id, `activo`, `repartidorId` nullable único, timestamps | Tiene roles y sesiones; la relación opcional con `Repartidor` limita las operaciones del rol `REPARTIDOR`. |
+| `Rol`, `Permiso` | `codigo` único y nombre/descripción | Catálogos sembrados por migración; la matriz se relaciona mediante `RolPermiso`. |
+| `UsuarioRol`, `RolPermiso` | Claves compuestas de sus dos FKs, `assignedAt` para `UsuarioRol` | Permiten roles múltiples y permisos declarativos sin duplicar usuarios. FKs restrictivas. |
+| `Sesion` | UUID, `tokenHash`, `csrfHash`, `usuarioId` nullable, `expiresAt`, `revokedAt`, `lastSeenAt` | El valor aleatorio del navegador nunca se guarda en claro. Sesiones anónimas temporales sirven para CSRF previo al login. |
+| `EventoAuditoria` | `id`, actor nullable, acción, ruta, método, resultado, requestId, metadata sin cuerpo, `createdAt` | Append-only por triggers que bloquean UPDATE, DELETE y TRUNCATE; los eventos previos al login o legacy conservan actor nulo. |
+| `IntentoAcceso` | `claveHash`, contador y ventana, `bloqueadoHasta`, `updatedAt` | Límites persistentes por hash de correo/IP y por IP; no almacena correos ni contraseñas en claro. |
 
 Para `REGISTRO_EXISTENCIAS`, solo `registroExistenciasId` tiene valor; para
 `PEDIDO_PRODUCCION`, solo `pedidoProduccionId` tiene valor. Los IDs históricos
@@ -193,11 +200,173 @@ combinan con esta consulta. La vista es de solo lectura.
 usa hoy, a diferencia de Producción, que usa ayer. Los filtros de cliente y
 repartidor son opcionales. Devuelve todas las visitas en orden descendente de
 llegada, incluidas visitas repetidas y las vinculadas a clientes o repartidores
-inactivos. No escribe, edita ni elimina visitas. Esta separación funcional no
-es un control de acceso mientras no haya autenticación.
+inactivos. No escribe, edita ni elimina visitas. La ruta requiere el permiso
+`visitas:read`; la autorización no cambia la fuente ni el contrato de consulta.
 
-Estas vistas no constituyen una frontera de seguridad mientras no exista
-autenticación.
+## Autenticación, permisos y auditoría
+
+### Mismo origen y proxy
+
+La SPA y la API se publican bajo el origen del Frontend. El cliente usa
+`/api/...` relativo. En desarrollo, Vite escucha en `http://127.0.0.1:4173` y
+proxy `/api` a `API_PROXY_TARGET` (por defecto `http://127.0.0.1:3000`). Esta
+variable no lleva prefijo `VITE_` y no se incluye en el bundle.
+
+El contenedor de Frontend ejecuta Caddy. `Caddyfile` atiende primero `/api` y
+`/api/*` con `reverse_proxy {$BACKEND_UPSTREAM}` sin reescribir la ruta. El
+proxy conserva método, query, body, cookies y encabezados `Set-Cookie`; las
+rutas restantes usan `try_files {path} /index.html` para el fallback SPA. Si
+Backend no responde, `/api/*` entrega error de proxy (502), nunca `index.html`.
+`BACKEND_UPSTREAM` es una URL runtime completa, incluyendo host privado y el
+puerto interno exacto informado por la plataforma. Caddy escucha en `PORT`
+asignado al servicio.
+
+### Sesiones y CSRF
+
+`PUBLIC_ORIGIN` es obligatorio y debe ser el origen exacto, sin path ni barra
+final. Las únicas rutas públicas son `GET /api/health`, `GET /api/auth/csrf` y
+`POST /api/auth/login`; el resto requiere sesión autenticada y permiso
+explícito. Las rutas sin matriz de permiso se deniegan por defecto.
+
+El backend genera un token de sesión aleatorio de 256 bits y guarda solo su
+SHA-256 en PostgreSQL. La cookie de sesión es host-only, `HttpOnly`,
+`SameSite=Lax`, `Path=/`, con duración fija de 8 horas; se llama `__Host-...`
+y agrega `Secure` cuando `PUBLIC_ORIGIN` usa HTTPS. No contiene atributo
+`Domain`. El token CSRF queda ligado a la fila de sesión: una cookie no
+HttpOnly separada permite conservar un token sincronizador estable entre
+pestañas, y el cliente lo envía en `X-CSRF-Token` en cambios de estado.
+Toda escritura valida que `Origin` coincida exactamente con `PUBLIC_ORIGIN` y
+que el hash CSRF corresponda a la sesión. No se usa JWT ni `localStorage`.
+
+Contraseña: Argon2id, 64 MiB de memoria, 3 iteraciones, paralelismo 1 y hash de
+32 bytes. El login usa respuesta genérica para correo/contraseña incorrectos y
+límites persistentes de 10 intentos por combinación de correo/IP y 100 por IP
+en 15 minutos. El backend usa la IP observada por su servidor HTTP; la
+topología de staging deberá mantenerlo accesible solo desde el proxy privado.
+
+### Matriz de roles
+
+| Rol | Acceso |
+| --- | --- |
+| `ADMIN_GENERAL` | Todos los permisos; puede administrar usuarios y roles, y consultar auditoría. |
+| `ADMIN_SUCURSALES` | Lectura/gestión de sucursales, inventarios por turno y propuestas de abastecimiento. |
+| `REPARTIDOR` | Lectura de clientes, catálogo y stock objetivo de clientes; registrar visitas y existencias; solo el `Repartidor` asignado a su usuario. |
+| `OPERADOR_PRODUCCION` | Lectura/registro de Producción y YogurtBase; lectura de catálogo, sucursales, inventarios y abastecimiento aprobado. |
+
+La matriz de permisos es persistente en `Rol`, `Permiso` y `RolPermiso`; el
+backend resuelve permiso por método/ruta y deniega rutas no registradas.
+Frontend oculta opciones no autorizadas, protege rutas profundas y muestra
+403. Cambiar roles, desactivar usuario o restablecer contraseña revoca sesiones
+activas. No se permite desactivar ni quitar el rol al último administrador
+general activo; un advisory lock serializa esos cambios concurrentes.
+
+El bootstrap del primer administrador requiere terminal interactiva, solicita
+contraseña sin mostrarla, comprueba que no haya un administrador activo y usa
+un lock de base. El evento de bootstrap tiene actor nulo porque todavía no
+existía una sesión autenticada. No hay usuario ni contraseña por defecto.
+
+### Auditoría
+
+Cada mutación HTTP agrega `MUTATION_REQUESTED` antes del controller. Al resolver
+la operación, agrega `MUTATION_SUCCEEDED`; si falla, registra
+`MUTATION_FAILED` después del rollback del servicio. Los eventos terminales
+usan `requestId` generado por Backend y un índice PostgreSQL único parcial que
+permite como máximo un resultado terminal por solicitud. Reintentar la misma
+escritura terminal es idempotente; un resultado terminal incompatible se
+rechaza. La API no presenta éxito si no puede persistir el evento terminal:
+responde 503 e incluye el `requestId` en el encabezado de respuesta para
+revisión antes de reintentar.
+
+Los terminales `MUTATION_SUCCEEDED` de las operaciones transaccionales se
+insertan con el actor autenticado dentro de la misma transacción PostgreSQL que
+la mutación. La respuesta de éxito se emite después del commit. Esto aplica a
+autenticación (login/logout/administración), visitas, captura y corrección de
+existencias con sus pedidos y movimientos, captura/confirmación de inventario
+por turno, lotes y acondicionamientos de YogurtBase, propuestas (crear,
+decidir, recalcular y confirmar), necesidades de sucursales (guardar y
+confirmar), reemplazos de objetivos de stock y presentaciones de sabores. El
+interceptor HTTP intenta registrar el terminal al resolver la ruta; si ya fue
+escrito en la transacción, reconoce el mismo resultado y no crea otro evento.
+Un fallo al escribir el éxito dentro de la transacción revierte también la
+mutación.
+
+Las altas y ediciones de clientes, sabores, repartidores y sucursales también
+guardan `MUTATION_SUCCEEDED` en la misma transacción Prisma que el cambio. Si
+la auditoría no puede insertarse, el cambio se revierte; el interceptor reconoce
+el terminal existente y no duplica el evento. Cuando una operación falla y su
+transacción revierte, el interceptor agrega `FAILED`; si la escritura de ese
+terminal también falla, `REQUESTED` permanece sin terminal y significa
+resultado desconocido hasta reconciliarlo por `requestId`. Ese ID correlaciona
+auditoría, pero no vuelve idempotente la operación de negocio. No existe todavía
+una ruta de entrega/surtido físico que registrar.
+Antes de reintentar se debe seguir el contrato de cada ruta: por ejemplo,
+acondicionamientos usan `claveSolicitud` con validación de mismo payload;
+los reemplazos `PUT` de objetivos y presentaciones vuelven a guardar el estado
+completo; confirmaciones inmutables pueden responder conflicto al segundo
+intento; las capturas de existencias/correcciones crean snapshots versionados;
+crear lotes, visitas y propuestas puede crear otro registro/versión; y guardar
+un borrador de inventario o necesidades reemplaza el borrador identificado por
+su clave de negocio. Ante `REQUESTED` sin terminal, primero se consulta el
+estado del recurso para aplicar ese contrato; no se reenvía ciegamente un
+`POST`. Los eventos no se editan ni eliminan.
+
+Se guardan ruta, método, request ID, parámetros de ruta, ID de recurso devuelto
+y status HTTP de errores; nunca el cuerpo, credenciales, hashes de correo,
+cookies o tokens. Las denegaciones de sesión, permiso, CSRF y ámbito de
+repartidor se registran antes de responder; si el registro falla, el Backend
+falla cerrado con 503. `EventoAuditoria` es append-only: triggers bloquean
+`UPDATE`, `DELETE` y `TRUNCATE`. Los registros/movimientos históricos no se
+editan ni reciben actor retroactivo.
+
+### Validación local y rollout de autenticación
+
+El Quality Gate local usa PostgreSQL aislado y prueba el proxy Vite, cookies
+HTTP locales, CSRF, permisos y auditoría. No valida atributos de cookie
+`Secure`, TLS ni el proxy Railway. Antes de staging:
+
+El smoke HTTP local (`npm run smoke:auth-http --prefix backend`) requiere que
+`DATABASE_URL` ya apunte a `auth_rbac_audit_test` en loopback y que sus
+migraciones estén aplicadas. Antes de iniciar servicios consulta
+`current_database()`. Luego inicia su propio Backend con esa misma URL, espera
+la dirección/puerto que el proceso anuncia por IPC y levanta Vite como proxy
+same-origin en loopback y en un puerto del sistema. No consume
+`AUTH_SMOKE_ORIGIN` ni llama servicios locales preexistentes. Rechaza
+redirecciones y, ante éxito o fallo, cierra únicamente el Backend hijo y el
+servidor Vite que creó. El comando
+`npm run verify:auth-smoke-isolation --prefix backend` ejecuta el smoke con un
+servidor local señuelo para comprobar que recibe cero solicitudes. Los
+fixtures de prueba se desactivan y sus sesiones se limpian; el usuario
+administrador DEMO preexistente se conserva. La auditoría append-only generada
+por el smoke no se borra.
+
+1. Confirmar el dominio HTTPS exacto en `PUBLIC_ORIGIN` y el upstream privado
+   completo en `BACKEND_UPSTREAM`; Caddy debe ser el único proxy al Backend,
+   y `trust proxy = 1` presupone exactamente ese salto.
+2. Revisar logs de `REQUESTED` sin terminal y verificar que el índice parcial
+   pueda crearse sin duplicados históricos; aplicar migraciones con
+   `prisma migrate deploy`, sin reset.
+3. Desplegar Backend y proxy Frontend; probar cookie host-only `Secure`,
+   `HttpOnly`, `SameSite=Lax`, Origin/CSRF, 401/403, expiración, revocación,
+   límites de login y matriz de roles antes de uso real.
+
+El rollback de aplicación es a una versión compatible conservando la
+migración y los eventos append-only. No retirar el índice parcial ni resetear
+la base como rollback. Si auth o auditoría falla, cerrar escrituras y restaurar
+la versión compatible; conservar Backend accesible solo por Caddy y revisar
+solicitudes pendientes por `requestId` antes de reintentar. Staging y
+producción siguen sin validarse desde este entorno.
+
+### Variables de despliegue futuro
+
+- Frontend: Dockerfile de `frontend/`, `BACKEND_UPSTREAM` con URL privada completa y `PORT` inyectado.
+- Backend: `PUBLIC_ORIGIN` con el dominio HTTPS exacto del Frontend; `DATABASE_URL` existente y `BUSINESS_TIMEZONE` conservadas.
+- Build de frontend: no requiere `VITE_API_URL`; todas las llamadas son relativas.
+- Backend no debe exponerse como origen público para usar `X-Forwarded-For` con confianza; Caddy debe ser su único proxy de entrada.
+
+Estas variables están documentadas para un deploy futuro. Railway no se ha
+cambiado ni desplegado en este slice. Antes de considerar autenticación lista
+para operación real, staging debe validar cookie `Secure`, proxy, CSRF,
+sesiones revocables, códigos 401/403 y la matriz por endpoint.
 
 ## Flujo de registro de existencias
 

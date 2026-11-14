@@ -4,6 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { withCsrfMock } from '../../test-utils';
 import type { Presentacion, PresentacionState, Sabor } from '../../shared/api/catalogo';
 import { SaboresPage } from './SaboresPage';
 
@@ -71,7 +72,6 @@ async function renderPage() {
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  vi.stubEnv('VITE_API_URL', 'http://localhost:3000/api');
   rows = [];
   states = [{ presentacionId: 1, habilitada: false }, { presentacionId: 2, habilitada: false }];
   listCalls = 0;
@@ -106,7 +106,7 @@ beforeEach(() => {
     }
     return json({ message: 'No encontrado' }, 404);
   });
-  vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('fetch', withCsrfMock(fetchMock));
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
@@ -198,7 +198,7 @@ describe('SaboresPage', () => {
     await act(async () => { checkbox('1/2 litro').click(); });
     await click('Guardar presentaciones');
     const puts = fetchMock.mock.calls.filter(([, init]) => init?.method === 'PUT');
-    expect(puts[0]?.[0]).toBe('http://localhost:3000/api/sabores/1/presentaciones');
+    expect(puts[0]?.[0]).toBe('/api/sabores/1/presentaciones');
     expect(JSON.parse(puts[0]?.[1]?.body as string)).toEqual({ presentaciones: [
       { presentacionId: 1, habilitada: true }, { presentacionId: 2, habilitada: true },
     ] });

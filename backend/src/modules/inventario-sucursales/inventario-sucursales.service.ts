@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { ConfigService } from '@nestjs/config';
 import { EstadoInventarioSucursal, Prisma, TurnoInventarioSucursal } from '@prisma/client';
 import { PrismaService } from '../../db/prisma.service.js';
+import { recordMutationSucceededInTransaction } from '../auth/audit-transaction.js';
 import { DEFAULT_BUSINESS_TIMEZONE, resolveBusinessDate } from '../produccion/business-date.js';
 import { GuardarInventarioDto } from './dto.js';
 import { horarioSucursal } from './turnos.js';
@@ -80,7 +81,9 @@ export class InventarioSucursalesService {
         if (data.detalles.length) {
           await tx.detalleInventarioSucursal.createMany({ data: data.detalles.map((detail) => ({ reporteId: report.id, saborId: detail.saborId, litros: new Prisma.Decimal(detail.litros) })) });
         }
-        return this.serializeReport(await tx.reporteInventarioSucursal.findUniqueOrThrow({ where: { id: report.id }, include: reportInclude }));
+        const result = this.serializeReport(await tx.reporteInventarioSucursal.findUniqueOrThrow({ where: { id: report.id }, include: reportInclude }));
+        await recordMutationSucceededInTransaction(tx);
+        return result;
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && ['P2002', 'P2034'].includes(error.code)) {
@@ -99,9 +102,11 @@ export class InventarioSucursalesService {
         if (report.estado === EstadoInventarioSucursal.CONFIRMADO) throw new ConflictException('Este inventario ya está confirmado');
         const detalleCount = await tx.detalleInventarioSucursal.count({ where: { reporteId: id } });
         if (detalleCount === 0) throw new BadRequestException('Agrega al menos un sabor con litros explícitos, incluso cero, antes de confirmar');
-        return this.serializeReport(await tx.reporteInventarioSucursal.update({
+        const result = this.serializeReport(await tx.reporteInventarioSucursal.update({
           where: { id }, data: { estado: EstadoInventarioSucursal.CONFIRMADO, confirmadoAt: new Date() }, include: reportInclude,
         }));
+        await recordMutationSucceededInTransaction(tx);
+        return result;
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {

@@ -4,6 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { withCsrfMock } from '../../test-utils';
 import { PropuestaAbastecimientoPage } from './PropuestaAbastecimientoPage';
 import type { PropuestaAbastecimiento } from '../../shared/api/propuestas-abastecimiento';
 
@@ -22,7 +23,6 @@ function setValue(input: HTMLInputElement | HTMLSelectElement, value: string) {
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  vi.stubEnv('VITE_API_URL', 'http://localhost:3000/api');
   calls = [];
   created = false;
   proposal = { id: 8, sucursalId: 1, sucursal: { id: 1, nombre: 'Centro', activo: true }, fecha: '2026-11-09', timezone: 'America/Mexico_City', version: 1, estado: 'BORRADOR', obsoleta: false, fuente: { reporteId: 7, fecha: '2026-11-08', turno: 'VESPERTINO', confirmadoAt: '' }, creadaAt: '', confirmadaAt: null, detalles: [
@@ -30,7 +30,7 @@ beforeEach(() => {
     { saborId: 20, sabor: 'Natural', saborActivo: true, estadoReferencia: 'SIN_DATOS', objetivoLitros: null, objetivoActualizadoAt: null, existenciaLitros: '0', sugerenciaLitros: null, decisionLitros: null },
   ] };
   vi.stubGlobal('confirm', vi.fn(() => false));
-  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  vi.stubGlobal('fetch', withCsrfMock(vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input); calls.push({ url, init });
     if (url.endsWith('/sucursales')) return json([{ id: 1, nombre: 'Centro', activo: true }]);
     if (url.includes('/propuestas-abastecimiento?')) return json({ timezone: 'America/Mexico_City', propuestas: created ? [proposal] : [] });
@@ -43,7 +43,7 @@ beforeEach(() => {
     if (url.endsWith('/confirmacion') && init?.method === 'POST') { proposal = { ...proposal, estado: 'CONFIRMADA', confirmadaAt: '2026-11-09T16:00:00.000Z' }; return json(proposal, 201); }
     if (/\/propuestas-abastecimiento\/\d+$/.test(url)) return json(proposal);
     return json({});
-  }));
+  })));
   container = document.createElement('div'); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });

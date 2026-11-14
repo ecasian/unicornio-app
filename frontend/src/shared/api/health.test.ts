@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiConfigurationError, fetchHealth } from './health';
+import { fetchHealth } from './health';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -7,8 +7,7 @@ afterEach(() => {
 });
 
 describe('fetchHealth', () => {
-  it('consults the configured API health endpoint', async () => {
-    vi.stubEnv('VITE_API_URL', 'http://localhost:3000/api');
+  it('consults the same-origin API health endpoint', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ status: 'ok' }),
@@ -18,21 +17,6 @@ describe('fetchHealth', () => {
     await expect(fetchHealth()).resolves.toEqual({
       status: 'ok',
     });
-    expect(fetchMock).toHaveBeenCalledWith('http://localhost:3000/api/health');
+    expect(fetchMock).toHaveBeenCalledWith('/api/health', { credentials: 'same-origin' });
   });
-
-  it.each([undefined, '', '   '])(
-    'rejects missing or empty VITE_API_URL (%s) before fetching',
-    async (apiUrl) => {
-      vi.stubEnv('VITE_API_URL', apiUrl);
-      const fetchMock = vi.fn();
-      vi.stubGlobal('fetch', fetchMock);
-
-      await expect(fetchHealth()).rejects.toBeInstanceOf(ApiConfigurationError);
-      await expect(fetchHealth()).rejects.toThrow(
-        'Configuración incompleta: define VITE_API_URL.',
-      );
-      expect(fetchMock).not.toHaveBeenCalled();
-    },
-  );
 });

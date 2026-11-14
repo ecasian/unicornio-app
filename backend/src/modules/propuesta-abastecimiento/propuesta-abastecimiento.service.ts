@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { ConfigService } from '@nestjs/config';
 import { EstadoPropuestaAbastecimiento, Prisma } from '@prisma/client';
 import { PrismaService } from '../../db/prisma.service.js';
+import { recordMutationSucceededInTransaction } from '../auth/audit-transaction.js';
 import { DEFAULT_BUSINESS_TIMEZONE, resolveBusinessDate } from '../produccion/business-date.js';
 import { loadPropuestaSources, propuestaObsoleta } from './propuesta-abastecimiento.source.js';
 
@@ -53,7 +54,7 @@ export class PropuestaAbastecimientoService {
     const fecha = this.date(fechaValue).fecha;
     const day = new Date(`${fecha}T00:00:00.000Z`);
     try {
-      const id = await this.prisma.$transaction(async (tx) => {
+      return await this.prisma.$transaction(async (tx) => {
         const locked = await tx.$queryRaw<Array<{ id: number }>>(Prisma.sql`SELECT "id" FROM "Sucursal" WHERE "id" = ${sucursalId} FOR UPDATE`);
         if (!locked.length) throw new NotFoundException('Sucursal no encontrada');
         const branch = await tx.sucursal.findUniqueOrThrow({ where: { id: sucursalId } });
@@ -62,15 +63,16 @@ export class PropuestaAbastecimientoService {
         if (latest?.estado === EstadoPropuestaAbastecimiento.BORRADOR) throw new ConflictException('Ya existe un borrador; edítalo o recalcula su fuente');
         const next = (await loadPropuestaSources(tx, [sucursalId], fecha)).get(sucursalId)!;
         const proposal = await tx.propuestaAbastecimiento.create({ data: { sucursalId, fecha: day, version: (latest?.version ?? 0) + 1, fuenteReporteId: next.report?.id ?? null, fuenteFecha: next.report?.fecha ?? null, fuenteTurno: next.report?.turno ?? null, fuenteConfirmadoAt: next.report?.confirmadoAt ?? null, detalles: { create: next.details } } });
-        return proposal.id;
+        const result = await this.serialize(tx, proposal.id);
+        await recordMutationSucceededInTransaction(tx);
+        return result;
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-      return this.get(id);
     } catch (error) { this.translateConflict(error); }
   }
 
   async decidir(id: number, decisions: { saborId: number; decisionLitros: string | null }[]) {
     try {
-      await this.prisma.$transaction(async (tx) => {
+      return await this.prisma.$transaction(async (tx) => {
         const proposal = await tx.propuestaAbastecimiento.findUnique({ where: { id }, select: { sucursalId: true, estado: true } });
         if (!proposal) throw new NotFoundException('Propuesta no encontrada');
         await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Sucursal" WHERE "id" = ${proposal.sucursalId} FOR UPDATE`);
@@ -88,14 +90,16 @@ export class PropuestaAbastecimientoService {
           if (!detail.sabor.activo) throw new BadRequestException('No se pueden cambiar decisiones de sabores inactivos');
         }
         for (const item of decisions) await tx.detallePropuestaAbastecimiento.update({ where: { propuestaId_saborId: { propuestaId: id, saborId: item.saborId } }, data: { decisionLitros: item.decisionLitros === null ? null : new Prisma.Decimal(item.decisionLitros) } });
+        const result = await this.serialize(tx, id);
+        await recordMutationSucceededInTransaction(tx);
+        return result;
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-      return this.get(id);
     } catch (error) { this.translateConflict(error); }
   }
 
   async recalcular(id: number) {
     try {
-      const nextId = await this.prisma.$transaction(async (tx) => {
+      return await this.prisma.$transaction(async (tx) => {
         const proposal = await tx.propuestaAbastecimiento.findUnique({ where: { id } });
         if (!proposal) throw new NotFoundException('Propuesta no encontrada');
         await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Sucursal" WHERE "id" = ${proposal.sucursalId} FOR UPDATE`);
@@ -106,15 +110,16 @@ export class PropuestaAbastecimientoService {
         if (!stale.obsoleta) throw new ConflictException('La fuente no cambió; no es necesario recalcular');
         const source = (await loadPropuestaSources(tx, [proposal.sucursalId], proposal.fecha.toISOString().slice(0, 10))).get(proposal.sucursalId)!;
         const next = await tx.propuestaAbastecimiento.create({ data: { sucursalId: proposal.sucursalId, fecha: proposal.fecha, version: proposal.version + 1, fuenteReporteId: source.report?.id ?? null, fuenteFecha: source.report?.fecha ?? null, fuenteTurno: source.report?.turno ?? null, fuenteConfirmadoAt: source.report?.confirmadoAt ?? null, detalles: { create: source.details } } });
-        return next.id;
+        const result = await this.serialize(tx, next.id);
+        await recordMutationSucceededInTransaction(tx);
+        return result;
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-      return this.get(nextId);
     } catch (error) { this.translateConflict(error); }
   }
 
   async confirmar(id: number) {
     try {
-      await this.prisma.$transaction(async (tx) => {
+      return await this.prisma.$transaction(async (tx) => {
         const proposal = await tx.propuestaAbastecimiento.findUnique({ where: { id } });
         if (!proposal) throw new NotFoundException('Propuesta no encontrada');
         await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Sucursal" WHERE "id" = ${proposal.sucursalId} FOR UPDATE`);
@@ -127,8 +132,10 @@ export class PropuestaAbastecimientoService {
         const details = await tx.detallePropuestaAbastecimiento.findMany({ where: { propuestaId: id }, include: { sabor: { select: { activo: true } } } });
         if (!details.length || details.some((item) => item.sabor.activo && item.decisionLitros === null)) throw new BadRequestException('Define explícitamente una cantidad para cada sabor activo antes de confirmar');
         await tx.propuestaAbastecimiento.update({ where: { id }, data: { estado: EstadoPropuestaAbastecimiento.CONFIRMADA, confirmadaAt: new Date() } });
+        const result = await this.serialize(tx, id);
+        await recordMutationSucceededInTransaction(tx);
+        return result;
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-      return this.get(id);
     } catch (error) { this.translateConflict(error); }
   }
 

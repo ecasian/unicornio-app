@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../db/prisma.service.js';
+import { recordMutationSucceededInTransaction } from '../auth/audit-transaction.js';
 import { CreateSaborDto } from './dto/create-sabor.dto.js';
 import { ReplaceSaborPresentacionesDto } from './dto/replace-sabor-presentaciones.dto.js';
 import { UpdateSaborDto } from './dto/update-sabor.dto.js';
@@ -22,12 +23,20 @@ export class CatalogoService {
   }
 
   createSabor(data: CreateSaborDto) {
-    return this.prisma.sabor.create({ data: { nombre: data.nombre, activo: true } });
+    return this.prisma.$transaction(async (transaction) => {
+      const result = await transaction.sabor.create({ data: { nombre: data.nombre, activo: true } });
+      await recordMutationSucceededInTransaction(transaction);
+      return result;
+    });
   }
 
   async updateSabor(id: number, data: UpdateSaborDto) {
-    await this.getSabor(id);
-    return this.prisma.sabor.update({ where: { id }, data });
+    return this.prisma.$transaction(async (transaction) => {
+      if (!await transaction.sabor.findUnique({ where: { id }, select: { id: true } })) throw new NotFoundException('Sabor no encontrado');
+      const result = await transaction.sabor.update({ where: { id }, data });
+      await recordMutationSucceededInTransaction(transaction);
+      return result;
+    });
   }
 
   listPresentaciones() {
@@ -57,7 +66,7 @@ export class CatalogoService {
       throw new BadRequestException('Envía una vez cada presentación existente');
     }
 
-    await this.prisma.$transaction(async (transaction) => {
+    return this.prisma.$transaction(async (transaction) => {
       for (const { presentacionId, habilitada } of [...data.presentaciones].sort((a, b) => a.presentacionId - b.presentacionId)) {
         await transaction.saborPresentacion.upsert({
           where: { saborId_presentacionId: { saborId: id, presentacionId } },
@@ -65,7 +74,15 @@ export class CatalogoService {
           update: { habilitada },
         });
       }
+      const enabledById = new Map(data.presentaciones.map(({ presentacionId, habilitada }) => [presentacionId, habilitada]));
+      const result = presentaciones.map(({ id: presentacionId, nombre, litrosEquivalentes }) => ({
+        presentacionId,
+        nombre,
+        litrosEquivalentes,
+        habilitada: enabledById.get(presentacionId) ?? false,
+      }));
+      await recordMutationSucceededInTransaction(transaction);
+      return result;
     });
-    return this.getSaborPresentaciones(id);
   }
 }

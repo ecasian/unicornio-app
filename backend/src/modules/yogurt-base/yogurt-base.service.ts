@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../db/prisma.service.js';
+import { recordMutationSucceededInTransaction } from '../auth/audit-transaction.js';
 import { businessCalendarDaysBetween, DEFAULT_BUSINESS_TIMEZONE, resolveBusinessDate } from '../produccion/business-date.js';
 import { AcondicionarDto, CrearLoteDto } from './dto.js';
 
@@ -64,7 +65,11 @@ export class YogurtBaseService {
   async createLot(data: CrearLoteDto) {
     const date = this.parseDate(data.fechaElaboracion);
     if (data.cubetas10L + data.cubetas6L + data.cubetas4L < 1) throw new BadRequestException('Registra al menos una cubeta de 10, 6 o 4 litros');
-    return this.prisma.loteYogurtBase.create({ data: { fechaElaboracion: date, cubetas10L: data.cubetas10L, cubetas6L: data.cubetas6L, cubetas4L: data.cubetas4L, litrosReales: new Prisma.Decimal(data.litrosReales) } });
+    return this.prisma.$transaction(async (tx) => {
+      const lot = await tx.loteYogurtBase.create({ data: { fechaElaboracion: date, cubetas10L: data.cubetas10L, cubetas6L: data.cubetas6L, cubetas4L: data.cubetas4L, litrosReales: new Prisma.Decimal(data.litrosReales) } });
+      await recordMutationSucceededInTransaction(tx);
+      return lot;
+    });
   }
 
   async condition(data: AcondicionarDto) {
@@ -85,7 +90,9 @@ export class YogurtBaseService {
         const available = Number(lot.litrosReales.minus(totals._sum.litrosConsumidos ?? new Prisma.Decimal(0)).toFixed(3));
         if (data.litrosConsumidos > available) throw new ConflictException(`Volumen excede la base disponible (${available} L)`);
         const movement = await tx.acondicionamientoYogurtBase.create({ data: { loteId: lot.id, saborId: sabor.id, claveSolicitud: data.claveSolicitud, litrosConsumidos: new Prisma.Decimal(data.litrosConsumidos), litrosObtenidos: new Prisma.Decimal(data.litrosObtenidos) } });
-        return this.movementResponse(movement);
+        const result = this.movementResponse(movement);
+        await recordMutationSucceededInTransaction(tx);
+        return result;
       }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {

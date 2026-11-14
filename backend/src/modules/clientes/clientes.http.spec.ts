@@ -38,12 +38,13 @@ const repository = {
     return row;
   },
 };
+const prisma = { cliente: repository, $transaction: async (run: (tx: { cliente: typeof repository }) => unknown) => run({ cliente: repository }) };
 
 class ClientesHttpTestModule {}
 
 Module({
   controllers: [ClientesController],
-  providers: [ClientesService, { provide: PrismaService, useValue: { cliente: repository } }],
+  providers: [ClientesService, { provide: PrismaService, useValue: prisma }],
 })(ClientesHttpTestModule);
 
 describe('Clientes HTTP', () => {

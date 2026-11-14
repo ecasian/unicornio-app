@@ -33,8 +33,97 @@ model Repartidor {
   registrosExistencias RegistroExistencias[]
   movimientosBitacora MovimientoBitacora[]
   pedidosProduccion PedidoProduccion[]
+  usuariosInternos UsuarioInterno[]
 }
 
+model UsuarioInterno {
+  id           Int               @id @default(autoincrement())
+  nombre       String
+  email        String            @unique
+  passwordHash String
+  activo       Boolean           @default(true)
+  repartidorId Int?              @unique
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  repartidor   Repartidor?       @relation(fields: [repartidorId], references: [id], onDelete: Restrict)
+  roles        UsuarioRol[]
+  sesiones     Sesion[]
+  auditoria    EventoAuditoria[]
+}
+
+model Rol {
+  id       Int          @id @default(autoincrement())
+  codigo   String       @unique
+  nombre   String
+  usuarios UsuarioRol[]
+  permisos RolPermiso[]
+}
+
+model Permiso {
+  id          Int          @id @default(autoincrement())
+  codigo      String       @unique
+  descripcion String
+  roles       RolPermiso[]
+}
+
+model UsuarioRol {
+  usuarioId  Int
+  rolId      Int
+  assignedAt DateTime       @default(now())
+  usuario    UsuarioInterno @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  rol        Rol            @relation(fields: [rolId], references: [id], onDelete: Restrict)
+
+  @@id([usuarioId, rolId])
+}
+
+model RolPermiso {
+  rolId     Int
+  permisoId Int
+  rol       Rol     @relation(fields: [rolId], references: [id], onDelete: Restrict)
+  permiso   Permiso @relation(fields: [permisoId], references: [id], onDelete: Restrict)
+
+  @@id([rolId, permisoId])
+}
+
+model Sesion {
+  id         String          @id @default(uuid()) @db.Uuid
+  tokenHash  String          @unique
+  csrfHash   String
+  usuarioId  Int?
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime        @default(now())
+  lastSeenAt DateTime        @default(now())
+  usuario    UsuarioInterno? @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@index([usuarioId, expiresAt, revokedAt])
+}
+
+model EventoAuditoria {
+  id             BigInt          @id @default(autoincrement())
+  actorUsuarioId Int?
+  accion         String
+  ruta           String
+  metodo         String
+  resultado      String
+  requestId      String?
+  metadata       Json?
+  createdAt      DateTime        @default(now())
+  actor          UsuarioInterno? @relation(fields: [actorUsuarioId], references: [id], onDelete: Restrict)
+
+  @@index([actorUsuarioId, createdAt])
+  @@index([createdAt, accion])
+}
+
+model IntentoAcceso {
+  claveHash      String    @id
+  intentos       Int       @default(1)
+  ventanaInicio  DateTime  @default(now())
+  bloqueadoHasta DateTime?
+  updatedAt      DateTime  @updatedAt
+
+  @@index([bloqueadoHasta])
+}
 model Sabor {
   id            Int                 @id @default(autoincrement())
   nombre        String

@@ -4,6 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { withCsrfMock } from '../../test-utils';
 import type { Repartidor } from '../../shared/api/repartidores';
 import { RepartidoresPage } from './RepartidoresPage';
 
@@ -54,7 +55,6 @@ async function renderPage() {
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  vi.stubEnv('VITE_API_URL', 'http://localhost:3000/api');
   rows = [];
   listCalls = 0;
   failList = false;
@@ -78,7 +78,7 @@ beforeEach(() => {
     }
     return json({ message: 'No encontrado' }, 404);
   });
-  vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('fetch', withCsrfMock(fetchMock));
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);

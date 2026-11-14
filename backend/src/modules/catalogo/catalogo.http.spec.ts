@@ -40,14 +40,26 @@ const repository = {
     findMany: async ({ include }: { include?: { sabores: { where: { saborId: number } } } }) =>
       include ? presentaciones.map((row) => ({ ...row, sabores: [...relations.values()].filter((relation) => relation.saborId === include.sabores.where.saborId && relation.presentacionId === row.id) })) : presentaciones,
   },
-  $transaction: async (run: (transaction: { saborPresentacion: { upsert: (args: {
+  $transaction: async (run: (transaction: { sabor: { findUnique: typeof repository.sabor.findUnique; create: typeof repository.sabor.create; update: typeof repository.sabor.update }; saborPresentacion: { upsert: (args: {
     where: { saborId_presentacionId: { saborId: number; presentacionId: number } };
     create: { saborId: number; presentacionId: number; habilitada: boolean };
     update: { habilitada: boolean };
   }) => Promise<RelationRow> } }) => Promise<void>) => {
     const snapshot = new Map(relations);
     try {
-      await run({ saborPresentacion: { upsert: async ({ where, create, update }) => {
+      return await run({ sabor: {
+        findUnique: async ({ where }) => sabores.get(where.id) ?? null,
+        create: async ({ data }) => {
+          const row = { id: nextId++, ...data, createdAt: new Date(), updatedAt: new Date() };
+          sabores.set(row.id, row);
+          return row;
+        },
+        update: async ({ where, data }) => {
+          const row = { ...sabores.get(where.id)!, ...Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined)), updatedAt: new Date() };
+          sabores.set(row.id, row);
+          return row;
+        },
+      }, saborPresentacion: { upsert: async ({ where, create, update }) => {
         const { saborId, presentacionId } = where.saborId_presentacionId;
         const key = `${saborId}:${presentacionId}`;
         const prior = relations.get(key);

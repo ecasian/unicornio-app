@@ -15,7 +15,6 @@ const flush = async () => act(async () => { await new Promise((resolve) => setTi
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  vi.stubEnv('VITE_API_URL', 'http://localhost:3000/api');
   calls = [];
   responseStatus = 200;
   responseBody = {
@@ -53,7 +52,7 @@ describe('Consolidado de abastecimiento aprobado', () => {
     await render();
     expect(container.textContent).toContain('Cargando consolidado');
     await flush();
-    expect(calls[0]).toBe('http://localhost:3000/api/abastecimiento-sucursales/resumen');
+    expect(calls[0]).toBe('/api/abastecimiento-sucursales/resumen');
     expect((container.querySelector('input[type="date"]') as HTMLInputElement).value).toBe('2026-11-10');
     expect(container.textContent).toContain('Aprobadas vigentes');
     expect(container.textContent).toContain('7.125 L');

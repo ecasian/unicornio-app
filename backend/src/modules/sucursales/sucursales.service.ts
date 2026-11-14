@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { ConfigService } from '@nestjs/config';
 import { Prisma, EstadoConcentradoSucursal } from '@prisma/client';
 import { PrismaService } from '../../db/prisma.service.js';
+import { recordMutationSucceededInTransaction } from '../auth/audit-transaction.js';
 import { GuardarNecesidadDto } from './dto/necesidad.dto.js';
 import { SucursalDto, UpdateSucursalDto } from './dto/sucursal.dto.js';
 import { DEFAULT_BUSINESS_TIMEZONE, resolveBusinessDate } from '../produccion/business-date.js';
@@ -37,13 +38,21 @@ export class SucursalesService {
   async createSucursal(data: SucursalDto) {
     const nombre = data.nombre.trim();
     if (!nombre) throw new BadRequestException('nombre no debe estar vacío');
-    return this.prisma.sucursal.create({ data: { nombre } });
+    return this.prisma.$transaction(async (tx) => {
+      const result = await tx.sucursal.create({ data: { nombre } });
+      await recordMutationSucceededInTransaction(tx);
+      return result;
+    });
   }
   async updateSucursal(id: number, data: UpdateSucursalDto) {
-    if (!await this.prisma.sucursal.findUnique({ where: { id } })) throw new NotFoundException('Sucursal no encontrada');
     const nombre = data.nombre?.trim();
     if (data.nombre !== undefined && !nombre) throw new BadRequestException('nombre no debe estar vacío');
-    return this.prisma.sucursal.update({ where: { id }, data: { ...data, nombre } });
+    return this.prisma.$transaction(async (tx) => {
+      if (!await tx.sucursal.findUnique({ where: { id }, select: { id: true } })) throw new NotFoundException('Sucursal no encontrada');
+      const result = await tx.sucursal.update({ where: { id }, data: { ...data, nombre } });
+      await recordMutationSucceededInTransaction(tx);
+      return result;
+    });
   }
 
   async guardarNecesidad(sucursalId: number, data: GuardarNecesidadDto) {
@@ -68,7 +77,9 @@ export class SucursalesService {
       if (!necesidad) necesidad = await tx.necesidadSucursal.create({ data: { concentradoId: concentrado.id, sucursalId } });
       await tx.detalleNecesidadSucursal.deleteMany({ where: { necesidadSucursalId: necesidad.id } });
       await tx.detalleNecesidadSucursal.createMany({ data: data.detalles.map((item) => ({ necesidadSucursalId: necesidad.id, ...item })) });
-      return tx.necesidadSucursal.findUniqueOrThrow({ where: { id: necesidad.id }, include: { sucursal: true, detalles: { include: { sabor: true }, orderBy: [{ saborId: 'asc' }, { capacidadLitros: 'asc' }] } } });
+      const result = await tx.necesidadSucursal.findUniqueOrThrow({ where: { id: necesidad.id }, include: { sucursal: true, detalles: { include: { sabor: true }, orderBy: [{ saborId: 'asc' }, { capacidadLitros: 'asc' }] } } });
+      await recordMutationSucceededInTransaction(tx);
+      return result;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
   }
 
@@ -83,7 +94,9 @@ export class SucursalesService {
     return this.withConflictHandling(() => this.prisma.$transaction(async (tx) => {
       const locked = await tx.necesidadSucursal.findUnique({ where: { id: report.id } });
       if (!locked || locked.estado === EstadoConcentradoSucursal.CONFIRMADO) throw new ConflictException('Este reporte ya está confirmado');
-      return tx.necesidadSucursal.update({ where: { id: report.id }, data: { estado: EstadoConcentradoSucursal.CONFIRMADO, confirmadoAt: new Date() }, include: { sucursal: true, detalles: { include: { sabor: true } } } });
+      const result = await tx.necesidadSucursal.update({ where: { id: report.id }, data: { estado: EstadoConcentradoSucursal.CONFIRMADO, confirmadoAt: new Date() }, include: { sucursal: true, detalles: { include: { sabor: true } } } });
+      await recordMutationSucceededInTransaction(tx);
+      return result;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
   }
 

@@ -4,6 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { withCsrfMock } from '../../test-utils';
 import { AppRouter } from '../../app/router';
 import type { Cliente } from '../../shared/api/clientes';
 import type { RegistroExistencias } from '../../shared/api/existencias';
@@ -99,7 +100,6 @@ async function openCapture() {
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  vi.stubEnv('VITE_API_URL', 'http://localhost:3000/api');
   repartidores = [repartidor];
   clientes = [cliente];
   stock = [stockBase, medioLitro];
@@ -194,7 +194,7 @@ beforeEach(() => {
     if (resource.endsWith('/clientes/4/surtido-operativo')) return delayedStockB ?? json(stockB);
     return json({ message: 'No encontrado' }, 404);
   });
-  vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('fetch', withCsrfMock(fetchMock));
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
@@ -217,7 +217,7 @@ describe('inicio de Repartidor', () => {
     expect(container.querySelector('nav[aria-label="Navegación de Administrador"]')).toBeNull();
     expect(container.textContent).not.toContain('Sucursales');
     expect(container.textContent).not.toContain('Nuevo repartidor');
-    expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:3000/api/repartidores?activo=true');
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/repartidores?activo=true');
   });
 
   it('selecciona repartidor y cliente activos, y muestra el surtido operativo de solo lectura', async () => {
@@ -229,9 +229,9 @@ describe('inicio de Repartidor', () => {
     expect(container.textContent).toContain('5551234567');
     expect(container.textContent).toContain('Calle Norte 12');
     expect(container.textContent).not.toContain('Tienda inactiva');
-    expect(fetchMock.mock.calls.some(([url]) => url === 'http://localhost:3000/api/clientes?activo=true')).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => url === '/api/clientes?activo=true')).toBe(true);
     await click('Seleccionar cliente Punto Fresco');
-    expect(fetchMock.mock.calls.some(([url]) => url === 'http://localhost:3000/api/clientes/3/surtido-operativo')).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => url === '/api/clientes/3/surtido-operativo')).toBe(true);
     expect(document.activeElement?.id).toBe('resumen-surtido');
     expect(container.textContent).toContain('Surtido de Punto Fresco');
     expect(container.textContent).toContain('Fresa');
@@ -371,7 +371,7 @@ describe('inicio de Repartidor', () => {
     await flush();
     expect(container.textContent).toContain('Nuez');
     expect(container.textContent).not.toContain('Fresa');
-    expect(fetchMock.mock.calls.some(([url]) => url === 'http://localhost:3000/api/clientes/4/surtido-operativo')).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => url === '/api/clientes/4/surtido-operativo')).toBe(true);
   });
 
   it('considera surtido configurado cuando todas las cantidades son cero', async () => {
@@ -450,7 +450,7 @@ describe('inicio de Repartidor', () => {
     await click('Guardar existencias');
     const posts = fetchMock.mock.calls.filter(([url, init]) => String(url).includes('/registros-existencias') && init?.method === 'POST');
     expect(posts).toHaveLength(1);
-    expect(posts[0][0]).toBe('http://localhost:3000/api/clientes/4/registros-existencias');
+    expect(posts[0][0]).toBe('/api/clientes/4/registros-existencias');
     expect(JSON.parse(String(posts[0][1].body))).toEqual({ repartidorId: 1, visitaClienteId: 12, existencias: [
       { saborId: 8, presentacionId: 1, cantidad: 2 },
     ] });

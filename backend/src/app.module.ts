@@ -16,6 +16,7 @@ import { InventarioSucursalesModule } from './modules/inventario-sucursales/inve
 import { StockObjetivoSucursalesModule } from './modules/stock-objetivo-sucursales/stock-objetivo-sucursales.module.js';
 import { PropuestaAbastecimientoModule } from './modules/propuesta-abastecimiento/propuesta-abastecimiento.module.js';
 import { AbastecimientoSucursalesModule } from './modules/abastecimiento-sucursales/abastecimiento-sucursales.module.js';
+import { AuthModule } from './modules/auth/auth.module.js';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { AbastecimientoSucursalesModule } from './modules/abastecimiento-sucursa
       envFilePath: ['.env', '../.env'],
     }),
     PrismaModule,
+    AuthModule,
     HealthModule,
     ClientesModule,
     RepartidoresModule,

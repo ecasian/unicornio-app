@@ -324,6 +324,21 @@ El Quality Gate local usa PostgreSQL aislado y prueba el proxy Vite, cookies
 HTTP locales, CSRF, permisos y auditoría. No valida atributos de cookie
 `Secure`, TLS ni el proxy Railway. Antes de staging:
 
+El smoke HTTP local (`npm run smoke:auth-http --prefix backend`) requiere que
+`DATABASE_URL` ya apunte a `auth_rbac_audit_test` en loopback y que sus
+migraciones estén aplicadas. Antes de iniciar servicios consulta
+`current_database()`. Luego inicia su propio Backend con esa misma URL, espera
+la dirección/puerto que el proceso anuncia por IPC y levanta Vite como proxy
+same-origin en loopback y en un puerto del sistema. No consume
+`AUTH_SMOKE_ORIGIN` ni llama servicios locales preexistentes. Rechaza
+redirecciones y, ante éxito o fallo, cierra únicamente el Backend hijo y el
+servidor Vite que creó. El comando
+`npm run verify:auth-smoke-isolation --prefix backend` ejecuta el smoke con un
+servidor local señuelo para comprobar que recibe cero solicitudes. Los
+fixtures de prueba se desactivan y sus sesiones se limpian; el usuario
+administrador DEMO preexistente se conserva. La auditoría append-only generada
+por el smoke no se borra.
+
 1. Confirmar el dominio HTTPS exacto en `PUBLIC_ORIGIN` y el upstream privado
    completo en `BACKEND_UPSTREAM`; Caddy debe ser el único proxy al Backend,
    y `trust proxy = 1` presupone exactamente ese salto.

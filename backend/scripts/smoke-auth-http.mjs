@@ -2,11 +2,12 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import process from 'node:process';
 import { PrismaClient } from '@prisma/client';
 import { hashPassword } from '../dist/modules/auth/password-hasher.js';
-import { parseAuthSmokeOrigin, parseAuthTestDatabaseUrl } from './safe-local-auth-target.mjs';
+import { parseAuthTestDatabaseUrl } from './safe-local-auth-target.mjs';
+import { reserveLoopbackPort, startControlledBackend, startLocalViteProxy, stopControlledBackend, stopLocalViteProxy } from './auth-smoke-runtime.mjs';
 
-const origin = parseAuthSmokeOrigin(process.env.AUTH_SMOKE_ORIGIN);
-parseAuthTestDatabaseUrl(process.env.DATABASE_URL);
-const prisma = new PrismaClient();
+const databaseUrl = process.env.DATABASE_URL;
+parseAuthTestDatabaseUrl(databaseUrl);
+const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
 const suffix = randomUUID();
 const email = `http-smoke-${suffix}@example.invalid`;
 const password = randomBytes(24).toString('base64url');
@@ -15,12 +16,16 @@ const cookiePairs = (headers) => headers.flatMap((header) => header.split(/, (?=
 const cookieHeader = (pairs) => pairs.join('; ');
 const check = (condition, message) => { if (!condition) throw new Error(message); };
 const fetchLocal = async (input, init = {}) => {
+  check(origin, 'El proxy local del smoke todavía no está iniciado.');
   const response = await globalThis.fetch(input, { ...init, redirect: 'manual' });
   check(response.status < 300 || response.status >= 400, `El smoke rechazó una redirección HTTP (${response.status}).`);
   return response;
 };
-const sessionCookieName = origin.startsWith('https://') ? '__Host-unicornio_session' : 'unicornio_session';
-const csrfCookieName = origin.startsWith('https://') ? '__Host-unicornio_csrf' : 'unicornio_csrf';
+let origin;
+let sessionCookieName;
+let csrfCookieName;
+let backend;
+let proxy;
 const startCsrfSession = async () => {
   const response = await fetchLocal(`${origin}/api/auth/csrf`);
   const body = await response.json();
@@ -54,6 +59,13 @@ const authenticatedTokenHashes = [];
 try {
   const [{ current_database: database }] = await prisma.$queryRaw`SELECT current_database()`;
   check(database === 'auth_rbac_audit_test', `Base inesperada: ${database}`);
+  const proxyPort = await reserveLoopbackPort();
+  const publicOrigin = `http://127.0.0.1:${proxyPort}`;
+  backend = await startControlledBackend({ databaseUrl, publicOrigin });
+  proxy = await startLocalViteProxy({ backendOrigin: backend.origin, port: proxyPort });
+  origin = proxy.origin;
+  sessionCookieName = origin.startsWith('https://') ? '__Host-unicornio_session' : 'unicornio_session';
+  csrfCookieName = origin.startsWith('https://') ? '__Host-unicornio_csrf' : 'unicornio_csrf';
   const health = await fetchLocal(`${origin}/api/health`);
   check(!health.redirected && health.status === 200 && health.headers.get('content-type')?.includes('application/json'), 'Health no fue JSON HTTP 200 local, sin redirección.');
   const preflightCsrf = await fetchLocal(`${origin}/api/auth/csrf`);
@@ -293,16 +305,27 @@ try {
   }
   check(rateAttempts.slice(0, 10).every((response) => response.status === 401), 'Las credenciales erróneas no conservaron respuesta genérica 401 en los primeros diez intentos.');
   check(rateAttempts[10].status === 429, 'El límite de intentos no bloqueó el intento número once.');
-  process.stdout.write('PASS: health por proxy, SPA fallback, cookies, Origin/CSRF, login/logout, 401/403/429, revocación, administración de usuarios/roles y protección del último admin.\n');
+  process.stdout.write(`PASS: health por proxy, SPA fallback, cookies, Origin/CSRF, login/logout, 401/403/429, revocación, administración de usuarios/roles y protección del último admin. Backend ${backend.origin}; Vite ${origin}.\n`);
 } finally {
-  const userIds = [userId, adminUserId, managedUserId, ...extraUserIds].filter(Boolean);
-  if (userIds.length) {
-    await prisma.sesion.deleteMany({ where: { usuarioId: { in: userIds } } });
-    await prisma.usuarioInterno.updateMany({ where: { id: { in: userIds } }, data: { activo: false } });
+  try {
+    const userIds = [userId, adminUserId, managedUserId, ...extraUserIds].filter(Boolean);
+    if (userIds.length) {
+      await prisma.sesion.deleteMany({ where: { usuarioId: { in: userIds } } });
+      await prisma.usuarioInterno.updateMany({ where: { id: { in: userIds } }, data: { activo: false } });
+    }
+    if (userId) await prisma.usuarioRol.deleteMany({ where: { usuarioId: userId } });
+    if (anonymousTokenHashes.length) await prisma.sesion.deleteMany({ where: { tokenHash: { in: anonymousTokenHashes } } });
+    if (authenticatedTokenHashes.length) await prisma.sesion.deleteMany({ where: { tokenHash: { in: authenticatedTokenHashes } } });
+    if (demoCourierIds.length) await prisma.repartidor.updateMany({ where: { id: { in: demoCourierIds } }, data: { activo: false } });
+  } finally {
+    try {
+      await stopLocalViteProxy(proxy);
+    } finally {
+      try {
+        await stopControlledBackend(backend);
+      } finally {
+        await prisma.$disconnect();
+      }
+    }
   }
-  if (userId) await prisma.usuarioRol.deleteMany({ where: { usuarioId: userId } });
-  if (anonymousTokenHashes.length) await prisma.sesion.deleteMany({ where: { tokenHash: { in: anonymousTokenHashes } } });
-  if (authenticatedTokenHashes.length) await prisma.sesion.deleteMany({ where: { tokenHash: { in: authenticatedTokenHashes } } });
-  if (demoCourierIds.length) await prisma.repartidor.updateMany({ where: { id: { in: demoCourierIds } }, data: { activo: false } });
-  await prisma.$disconnect();
 }

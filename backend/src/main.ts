@@ -38,7 +38,14 @@ async function bootstrap(): Promise<void> {
   }
 
   const port = Number(config.get<string>('PORT') ?? config.get<string>('BACKEND_PORT') ?? 3000);
-  await app.listen(port, '0.0.0.0');
+  const host = config.get<string>('BACKEND_HOST')?.trim() || '0.0.0.0';
+  await app.listen(port, host);
+  if (process.env.AUTH_SMOKE_CONTROLLED === '1' && typeof process.send === 'function') {
+    const address = app.getHttpServer().address();
+    if (address && typeof address === 'object') {
+      process.send({ type: 'auth-smoke-ready', host: address.address, port: address.port });
+    }
+  }
 }
 
 void bootstrap();

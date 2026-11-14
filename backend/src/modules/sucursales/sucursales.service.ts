@@ -38,13 +38,21 @@ export class SucursalesService {
   async createSucursal(data: SucursalDto) {
     const nombre = data.nombre.trim();
     if (!nombre) throw new BadRequestException('nombre no debe estar vacío');
-    return this.prisma.sucursal.create({ data: { nombre } });
+    return this.prisma.$transaction(async (tx) => {
+      const result = await tx.sucursal.create({ data: { nombre } });
+      await recordMutationSucceededInTransaction(tx);
+      return result;
+    });
   }
   async updateSucursal(id: number, data: UpdateSucursalDto) {
-    if (!await this.prisma.sucursal.findUnique({ where: { id } })) throw new NotFoundException('Sucursal no encontrada');
     const nombre = data.nombre?.trim();
     if (data.nombre !== undefined && !nombre) throw new BadRequestException('nombre no debe estar vacío');
-    return this.prisma.sucursal.update({ where: { id }, data: { ...data, nombre } });
+    return this.prisma.$transaction(async (tx) => {
+      if (!await tx.sucursal.findUnique({ where: { id }, select: { id: true } })) throw new NotFoundException('Sucursal no encontrada');
+      const result = await tx.sucursal.update({ where: { id }, data: { ...data, nombre } });
+      await recordMutationSucceededInTransaction(tx);
+      return result;
+    });
   }
 
   async guardarNecesidad(sucursalId: number, data: GuardarNecesidadDto) {

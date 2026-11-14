@@ -1,14 +1,16 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import process from 'node:process';
-import { URL } from 'node:url';
 import { PrismaClient } from '@prisma/client';
 import { hashPassword, verifyPassword } from '../dist/modules/auth/password-hasher.js';
 import { recordMutationSucceededInTransaction, runWithAuditRequestContext } from '../dist/modules/auth/audit-transaction.js';
+import { ClientesService } from '../dist/modules/clientes/clientes.service.js';
+import { CatalogoService } from '../dist/modules/catalogo/catalogo.service.js';
+import { RepartidoresService } from '../dist/modules/repartidores/repartidores.service.js';
+import { SucursalesService } from '../dist/modules/sucursales/sucursales.service.js';
+import { parseAuthTestDatabaseUrl } from './safe-local-auth-target.mjs';
 
 const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl || !new URL(databaseUrl).pathname.includes('auth_rbac_audit_test')) {
-  throw new Error('DATABASE_URL debe apuntar a la base aislada auth_rbac_audit_test.');
-}
+parseAuthTestDatabaseUrl(databaseUrl);
 
 const prisma = new PrismaClient();
 const suffix = randomUUID();
@@ -179,6 +181,52 @@ try {
       committedSuccess[0].accion !== 'MUTATION_SUCCEEDED' || committedSuccess[0].actorUsuarioId !== actor.id) {
     throw new Error('La mutación exitosa y su único terminal con actor no se confirmaron juntos.');
   }
+
+  // Ejecuta los métodos reales de los cuatro servicios: alta y edición deben
+  // confirmar negocio + SUCCEEDED juntas, y revertir ante FK de actor inválida.
+  const clients = new ClientesService(prisma);
+  const catalog = new CatalogoService(prisma);
+  const couriers = new RepartidoresService(prisma);
+  const branches = new SucursalesService(prisma, { get: () => undefined });
+  const catalogCases = [
+    { name: 'clientes', create: (nombre) => clients.create({ nombre, celular: `555${suffix.slice(0, 7)}`, direccion: 'Fixture DB aislado', manejaMedioLitro: true }), update: (id, nombre) => clients.update(id, { nombre }),
+      find: (nombre) => prisma.cliente.findFirst({ where: { nombre } }), delete: (id) => prisma.cliente.deleteMany({ where: { id } }) },
+    { name: 'sabores', create: (nombre) => catalog.createSabor({ nombre }), update: (id, nombre) => catalog.updateSabor(id, { nombre }),
+      find: (nombre) => prisma.sabor.findFirst({ where: { nombre } }), delete: (id) => prisma.sabor.deleteMany({ where: { id } }) },
+    { name: 'repartidores', create: (nombre) => couriers.create({ nombre }), update: (id, nombre) => couriers.update(id, { nombre }),
+      find: (nombre) => prisma.repartidor.findFirst({ where: { nombre } }), delete: (id) => prisma.repartidor.deleteMany({ where: { id } }) },
+    { name: 'sucursales', create: (nombre) => branches.createSucursal({ nombre }), update: (id, nombre) => branches.updateSucursal(id, { nombre }),
+      find: (nombre) => prisma.sucursal.findUnique({ where: { nombre } }), delete: (id) => prisma.sucursal.deleteMany({ where: { id } }) },
+  ];
+  const catalogFixtureIds = [];
+  for (const item of catalogCases) {
+    const createName = `Auth audit ${item.name} ${suffix}`;
+    const failedCreateRequestId = `audit-${item.name}-create-rollback-${suffix}`;
+    let createRolledBack = false;
+    try {
+      await runWithAuditRequestContext({ requestId: failedCreateRequestId, route: `/api/${item.name}`, method: 'POST', actorUserId: 2147483647 }, () => item.create(`${createName} failed`));
+    } catch { createRolledBack = true; }
+    if (!createRolledBack || await item.find(`${createName} failed`)) throw new Error(`Alta ${item.name}: la falla de auditoría no revirtió el alta.`);
+
+    const created = await runWithAuditRequestContext({ requestId: `audit-${item.name}-create-success-${suffix}`, route: `/api/${item.name}`, method: 'POST', actorUserId: actor.id }, () => item.create(createName));
+    catalogFixtureIds.push({ item, id: created.id });
+    const createTerminals = await prisma.eventoAuditoria.findMany({ where: { requestId: `audit-${item.name}-create-success-${suffix}`, accion: { in: ['MUTATION_SUCCEEDED', 'MUTATION_FAILED'] } } });
+    if (createTerminals.length !== 1 || createTerminals[0].accion !== 'MUTATION_SUCCEEDED' || createTerminals[0].actorUsuarioId !== actor.id) throw new Error(`Alta ${item.name}: terminal de éxito ausente, duplicado o sin actor.`);
+
+    const failedUpdateRequestId = `audit-${item.name}-update-rollback-${suffix}`;
+    let updateRolledBack = false;
+    try {
+      await runWithAuditRequestContext({ requestId: failedUpdateRequestId, route: `/api/${item.name}/${created.id}`, method: 'PATCH', actorUserId: 2147483647 }, () => item.update(created.id, `${createName} changed`));
+    } catch { updateRolledBack = true; }
+    if (!updateRolledBack || !await item.find(createName) || await item.find(`${createName} changed`)) throw new Error(`Edición ${item.name}: la falla de auditoría no revirtió la edición.`);
+
+    await runWithAuditRequestContext({ requestId: `audit-${item.name}-update-success-${suffix}`, route: `/api/${item.name}/${created.id}`, method: 'PATCH', actorUserId: actor.id }, () => item.update(created.id, `${createName} updated`));
+    const updateTerminals = await prisma.eventoAuditoria.findMany({ where: { requestId: `audit-${item.name}-update-success-${suffix}`, accion: { in: ['MUTATION_SUCCEEDED', 'MUTATION_FAILED'] } } });
+    if (updateTerminals.length !== 1 || updateTerminals[0].accion !== 'MUTATION_SUCCEEDED' || updateTerminals[0].actorUsuarioId !== actor.id || !await item.find(`${createName} updated`)) throw new Error(`Edición ${item.name}: cambio y terminal no quedaron confirmados una sola vez.`);
+  }
+  for (const { item, id } of catalogFixtureIds) await item.delete(id);
+  process.stdout.write('PASS: altas y ediciones reales de clientes, sabores, repartidores y sucursales; rollback ante fallo de auditoría y un solo SUCCEEDED con actor en PostgreSQL.\n');
+
   // Estos dos son fixtures técnicos de esta verificación; los eventos de auditoría
   // son append-only y quedan conservados.
   await prisma.intentoAcceso.deleteMany({ where: { claveHash: { in: [successRollbackKey, successKey] } } });

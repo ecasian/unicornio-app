@@ -23,12 +23,20 @@ export class CatalogoService {
   }
 
   createSabor(data: CreateSaborDto) {
-    return this.prisma.sabor.create({ data: { nombre: data.nombre, activo: true } });
+    return this.prisma.$transaction(async (transaction) => {
+      const result = await transaction.sabor.create({ data: { nombre: data.nombre, activo: true } });
+      await recordMutationSucceededInTransaction(transaction);
+      return result;
+    });
   }
 
   async updateSabor(id: number, data: UpdateSaborDto) {
-    await this.getSabor(id);
-    return this.prisma.sabor.update({ where: { id }, data });
+    return this.prisma.$transaction(async (transaction) => {
+      if (!await transaction.sabor.findUnique({ where: { id }, select: { id: true } })) throw new NotFoundException('Sabor no encontrado');
+      const result = await transaction.sabor.update({ where: { id }, data });
+      await recordMutationSucceededInTransaction(transaction);
+      return result;
+    });
   }
 
   listPresentaciones() {

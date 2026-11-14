@@ -28,11 +28,12 @@ const repository = {
     return row;
   },
 };
+const prisma = { repartidor: repository, $transaction: async (run: (tx: { repartidor: typeof repository }) => unknown) => run({ repartidor: repository }) };
 
 class RepartidoresHttpTestModule {}
 Module({
   controllers: [RepartidoresController],
-  providers: [RepartidoresService, { provide: PrismaService, useValue: { repartidor: repository } }],
+  providers: [RepartidoresService, { provide: PrismaService, useValue: prisma }],
 })(RepartidoresHttpTestModule);
 
 describe('Repartidores HTTP', () => {

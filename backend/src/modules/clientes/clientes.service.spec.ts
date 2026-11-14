@@ -12,7 +12,8 @@ const saved = { id: 1, ...input, activo: true, createdAt: new Date(), updatedAt:
 
 function setup() {
   const cliente = { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() };
-  const service = new ClientesService({ cliente } as unknown as PrismaService);
+  const prisma = { cliente, $transaction: vi.fn(async (run: (tx: { cliente: typeof cliente }) => unknown) => run({ cliente })) };
+  const service = new ClientesService(prisma as unknown as PrismaService);
   return { cliente, service };
 }
 

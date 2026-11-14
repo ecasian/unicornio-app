@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../db/prisma.service.js';
 import { CreateRepartidorDto } from './dto/create-repartidor.dto.js';
 import { UpdateRepartidorDto } from './dto/update-repartidor.dto.js';
+import { recordMutationSucceededInTransaction } from '../auth/audit-transaction.js';
 
 @Injectable()
 export class RepartidoresService {
@@ -25,11 +26,19 @@ export class RepartidoresService {
   }
 
   create(data: CreateRepartidorDto) {
-    return this.prisma.repartidor.create({ data: { nombre: data.nombre, activo: true } });
+    return this.prisma.$transaction(async (tx) => {
+      const result = await tx.repartidor.create({ data: { nombre: data.nombre, activo: true } });
+      await recordMutationSucceededInTransaction(tx);
+      return result;
+    });
   }
 
   async update(id: number, data: UpdateRepartidorDto) {
-    await this.get(id);
-    return this.prisma.repartidor.update({ where: { id }, data });
+    return this.prisma.$transaction(async (tx) => {
+      if (!await tx.repartidor.findUnique({ where: { id }, select: { id: true } })) throw new NotFoundException('Repartidor no encontrado');
+      const result = await tx.repartidor.update({ where: { id }, data });
+      await recordMutationSucceededInTransaction(tx);
+      return result;
+    });
   }
 }

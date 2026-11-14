@@ -290,16 +290,15 @@ escrito en la transacción, reconoce el mismo resultado y no crea otro evento.
 Un fallo al escribir el éxito dentro de la transacción revierte también la
 mutación.
 
-Las altas y ediciones de catálogos que todavía usan escrituras Prisma simples
-(clientes, sabores, repartidores y alta/edición de sucursales) conservan el
-terminal genérico posterior al servicio: un fallo de auditoría puede responder
-503 tras aplicar esos cambios. No son confirmaciones ni escrituras de
-existencias/producción y quedan identificadas para remediación posterior. No
-existe todavía una ruta de entrega/surtido físico que registrar. Cuando una
-operación falla y su transacción revierte, el interceptor agrega `FAILED`; si
-la escritura de ese terminal también falla, `REQUESTED` permanece sin terminal
-y significa resultado desconocido hasta reconciliarlo por `requestId`. Ese ID
-correlaciona auditoría, pero no vuelve idempotente la operación de negocio.
+Las altas y ediciones de clientes, sabores, repartidores y sucursales también
+guardan `MUTATION_SUCCEEDED` en la misma transacción Prisma que el cambio. Si
+la auditoría no puede insertarse, el cambio se revierte; el interceptor reconoce
+el terminal existente y no duplica el evento. Cuando una operación falla y su
+transacción revierte, el interceptor agrega `FAILED`; si la escritura de ese
+terminal también falla, `REQUESTED` permanece sin terminal y significa
+resultado desconocido hasta reconciliarlo por `requestId`. Ese ID correlaciona
+auditoría, pero no vuelve idempotente la operación de negocio. No existe todavía
+una ruta de entrega/surtido físico que registrar.
 Antes de reintentar se debe seguir el contrato de cada ruta: por ejemplo,
 acondicionamientos usan `claveSolicitud` con validación de mismo payload;
 los reemplazos `PUT` de objetivos y presentaciones vuelven a guardar el estado

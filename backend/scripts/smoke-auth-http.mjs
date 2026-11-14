@@ -1,13 +1,11 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import process from 'node:process';
-import { URL } from 'node:url';
 import { PrismaClient } from '@prisma/client';
 import { hashPassword } from '../dist/modules/auth/password-hasher.js';
+import { parseAuthSmokeOrigin, parseAuthTestDatabaseUrl } from './safe-local-auth-target.mjs';
 
-const origin = process.env.AUTH_SMOKE_ORIGIN;
-const databaseUrl = process.env.DATABASE_URL;
-if (!origin || new URL(origin).origin !== origin) throw new Error('AUTH_SMOKE_ORIGIN debe ser el origen local exacto del Frontend/Caddy.');
-if (!databaseUrl || !new URL(databaseUrl).pathname.includes('auth_rbac_audit_test')) throw new Error('DATABASE_URL debe apuntar a auth_rbac_audit_test.');
+const origin = parseAuthSmokeOrigin(process.env.AUTH_SMOKE_ORIGIN);
+parseAuthTestDatabaseUrl(process.env.DATABASE_URL);
 const prisma = new PrismaClient();
 const suffix = randomUUID();
 const email = `http-smoke-${suffix}@example.invalid`;
@@ -16,10 +14,15 @@ const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const cookiePairs = (headers) => headers.flatMap((header) => header.split(/, (?=[^;,]+=)/)).map((header) => header.split(';', 1)[0]);
 const cookieHeader = (pairs) => pairs.join('; ');
 const check = (condition, message) => { if (!condition) throw new Error(message); };
+const fetchLocal = async (input, init = {}) => {
+  const response = await globalThis.fetch(input, { ...init, redirect: 'manual' });
+  check(response.status < 300 || response.status >= 400, `El smoke rechazó una redirección HTTP (${response.status}).`);
+  return response;
+};
 const sessionCookieName = origin.startsWith('https://') ? '__Host-unicornio_session' : 'unicornio_session';
 const csrfCookieName = origin.startsWith('https://') ? '__Host-unicornio_csrf' : 'unicornio_csrf';
 const startCsrfSession = async () => {
-  const response = await globalThis.fetch(`${origin}/api/auth/csrf`);
+  const response = await fetchLocal(`${origin}/api/auth/csrf`);
   const body = await response.json();
   const cookies = cookiePairs(response.headers.getSetCookie());
   const sessionPair = cookies.find((pair) => pair.startsWith(`${sessionCookieName}=`));
@@ -29,7 +32,7 @@ const startCsrfSession = async () => {
 };
 const loginUser = async (loginEmail, loginPassword) => {
   const csrf = await startCsrfSession();
-  const response = await globalThis.fetch(`${origin}/api/auth/login`, {
+  const response = await fetchLocal(`${origin}/api/auth/login`, {
     method: 'POST', headers: { Origin: origin, Cookie: cookieHeader(csrf.cookies), 'X-CSRF-Token': csrf.body.csrfToken, 'Content-Type': 'application/json' },
     body: JSON.stringify({ email: loginEmail, password: loginPassword }),
   });
@@ -51,6 +54,16 @@ const authenticatedTokenHashes = [];
 try {
   const [{ current_database: database }] = await prisma.$queryRaw`SELECT current_database()`;
   check(database === 'auth_rbac_audit_test', `Base inesperada: ${database}`);
+  const health = await fetchLocal(`${origin}/api/health`);
+  check(!health.redirected && health.status === 200 && health.headers.get('content-type')?.includes('application/json'), 'Health no fue JSON HTTP 200 local, sin redirección.');
+  const preflightCsrf = await fetchLocal(`${origin}/api/auth/csrf`);
+  check(!preflightCsrf.redirected && preflightCsrf.status === 200, 'No se pudo comprobar el Backend local antes de crear fixtures.');
+  const preflightCookie = cookiePairs(preflightCsrf.headers.getSetCookie()).find((pair) => pair.startsWith('unicornio_session=') || pair.startsWith('__Host-unicornio_session='));
+  check(preflightCookie, 'El Backend no devolvió una sesión local verificable.');
+  const preflightTokenHash = sha256(decodeURIComponent(preflightCookie.slice(preflightCookie.indexOf('=') + 1)));
+  const sameDatabaseSession = await prisma.sesion.findUnique({ where: { tokenHash: preflightTokenHash }, select: { id: true } });
+  check(Boolean(sameDatabaseSession), 'El Backend local no usa la misma base auth_rbac_audit_test; se aborta antes de crear fixtures.');
+  anonymousTokenHashes.push(preflightTokenHash);
   const role = await prisma.rol.findUnique({ where: { codigo: 'OPERADOR_PRODUCCION' } });
   check(Boolean(role), 'Falta el rol de prueba OPERADOR_PRODUCCION.');
   const user = await prisma.usuarioInterno.create({ data: {
@@ -59,13 +72,11 @@ try {
   } });
   userId = user.id;
 
-  const health = await globalThis.fetch(`${origin}/api/health`);
-  check(health.status === 200 && health.headers.get('content-type')?.includes('application/json'), 'Health no fue JSON HTTP 200 por el proxy.');
   check(!health.headers.get('access-control-allow-origin'), 'La API devolvió CORS abierto en el contrato same-origin.');
-  const deepRoute = await globalThis.fetch(`${origin}/produccion/base`);
+  const deepRoute = await fetchLocal(`${origin}/produccion/base`);
   check(deepRoute.status === 200 && deepRoute.headers.get('content-type')?.includes('text/html'), 'La ruta SPA profunda no devolvió el fallback HTML.');
 
-  const csrfResponse = await globalThis.fetch(`${origin}/api/auth/csrf`);
+  const csrfResponse = await fetchLocal(`${origin}/api/auth/csrf`);
   check(csrfResponse.status === 200, `No se pudo crear la sesión CSRF previa al login (HTTP ${csrfResponse.status}).`);
   const csrfData = await csrfResponse.json();
   const anonymousCookies = cookiePairs(csrfResponse.headers.getSetCookie());
@@ -79,17 +90,17 @@ try {
   const anonymousToken = decodeURIComponent(sessionPair.slice(sessionCookieName.length + 1));
   anonymousTokenHashes.push(sha256(anonymousToken));
 
-  const wrongOrigin = await globalThis.fetch(`${origin}/api/auth/login`, {
+  const wrongOrigin = await fetchLocal(`${origin}/api/auth/login`, {
     method: 'POST', headers: { Origin: 'https://attacker.invalid', Cookie: cookieHeader(anonymousCookies), 'X-CSRF-Token': csrfData.csrfToken, 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
   check(wrongOrigin.status === 403, 'Se permitió Origin que no coincide.');
-  const missingCsrf = await globalThis.fetch(`${origin}/api/auth/login`, {
+  const missingCsrf = await fetchLocal(`${origin}/api/auth/login`, {
     method: 'POST', headers: { Origin: origin, Cookie: cookieHeader(anonymousCookies), 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
   check(missingCsrf.status === 403, 'Se permitió login sin CSRF.');
-  const badLogin = await globalThis.fetch(`${origin}/api/auth/login`, {
+  const badLogin = await fetchLocal(`${origin}/api/auth/login`, {
     method: 'POST', headers: { Origin: origin, Cookie: cookieHeader(anonymousCookies), 'X-CSRF-Token': csrfData.csrfToken, 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password: randomBytes(24).toString('base64url') }),
   });
@@ -98,7 +109,7 @@ try {
   const badLoginAudit = await prisma.eventoAuditoria.findFirst({ where: { requestId: badLoginId, accion: 'AUTH_LOGIN_FAILED', resultado: 'DENIED' } });
   check(Boolean(badLoginAudit) && !JSON.stringify(badLoginAudit.metadata).match(/password|cookie|token|hash/i), 'El login fallido no quedó auditado de forma segura.');
 
-  const login = await globalThis.fetch(`${origin}/api/auth/login`, {
+  const login = await fetchLocal(`${origin}/api/auth/login`, {
     method: 'POST', headers: { Origin: origin, Cookie: cookieHeader(anonymousCookies), 'X-CSRF-Token': csrfData.csrfToken, 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
@@ -113,21 +124,21 @@ try {
   authenticatedTokenHashes.push(sha256(loggedToken));
   const loggedCookieHeader = cookieHeader(loginCookies);
 
-  const current = await globalThis.fetch(`${origin}/api/auth/session`, { headers: { Cookie: loggedCookieHeader } });
+  const current = await fetchLocal(`${origin}/api/auth/session`, { headers: { Cookie: loggedCookieHeader } });
   check(current.status === 200 && (await current.json()).id === userId, 'Sesión autenticada no se pudo consultar.');
   const expiredSessionToken = randomBytes(32).toString('base64url');
   await prisma.sesion.create({ data: { tokenHash: sha256(expiredSessionToken), csrfHash: sha256(randomBytes(32).toString('base64url')), usuarioId: userId, expiresAt: new Date(Date.now() - 1000) } });
   authenticatedTokenHashes.push(sha256(expiredSessionToken));
-  const expiredSession = await globalThis.fetch(`${origin}/api/auth/session`, { headers: { Cookie: `${sessionCookieName}=${expiredSessionToken}` } });
+  const expiredSession = await fetchLocal(`${origin}/api/auth/session`, { headers: { Cookie: `${sessionCookieName}=${expiredSessionToken}` } });
   check(expiredSession.status === 401, 'Una sesión expirada conservó acceso.');
-  const denied = await globalThis.fetch(`${origin}/api/auth/users`, { headers: { Cookie: loggedCookieHeader } });
+  const denied = await fetchLocal(`${origin}/api/auth/users`, { headers: { Cookie: loggedCookieHeader } });
   check(denied.status === 403, 'OPERADOR_PRODUCCION obtuvo acceso a administración de usuarios.');
 
-  const logout = await globalThis.fetch(`${origin}/api/auth/logout`, {
+  const logout = await fetchLocal(`${origin}/api/auth/logout`, {
     method: 'POST', headers: { Origin: origin, Cookie: loggedCookieHeader, 'X-CSRF-Token': csrfAfterLogin },
   });
   check(logout.status === 200, `Logout devolvió HTTP ${logout.status}.`);
-  const afterLogout = await globalThis.fetch(`${origin}/api/auth/session`, { headers: { Cookie: loggedCookieHeader } });
+  const afterLogout = await fetchLocal(`${origin}/api/auth/session`, { headers: { Cookie: loggedCookieHeader } });
   check(afterLogout.status === 401, 'La sesión siguió vigente después del logout.');
 
   const adminRole = await prisma.rol.findUnique({ where: { codigo: 'ADMIN_GENERAL' } });
@@ -142,15 +153,15 @@ try {
   const adminCookieHeader = adminLogin.cookie;
   const adminCsrfToken = adminLogin.cookies.find((pair) => pair.startsWith(`${csrfCookieName}=`))?.split('=', 2)[1];
 
-  const userList = await globalThis.fetch(`${origin}/api/auth/users`, { headers: { Cookie: adminCookieHeader } });
-  const roleList = await globalThis.fetch(`${origin}/api/auth/roles`, { headers: { Cookie: adminCookieHeader } });
-  const auditList = await globalThis.fetch(`${origin}/api/auth/audit?take=10`, { headers: { Cookie: adminCookieHeader } });
-  const swagger = await globalThis.fetch(`${origin}/api/docs`);
+  const userList = await fetchLocal(`${origin}/api/auth/users`, { headers: { Cookie: adminCookieHeader } });
+  const roleList = await fetchLocal(`${origin}/api/auth/roles`, { headers: { Cookie: adminCookieHeader } });
+  const auditList = await fetchLocal(`${origin}/api/auth/audit?take=10`, { headers: { Cookie: adminCookieHeader } });
+  const swagger = await fetchLocal(`${origin}/api/docs`);
   check(userList.status === 200 && roleList.status === 200 && auditList.status === 200, 'ADMIN_GENERAL no pudo consultar usuarios, roles y auditoría.');
   check(swagger.status === 200, 'Swagger local no está disponible para revisión.');
   const adminCsrfHeaders = { Origin: origin, Cookie: adminCookieHeader, 'X-CSRF-Token': adminCsrfToken, 'Content-Type': 'application/json' };
   const createCourier = async (name) => {
-    const response = await globalThis.fetch(`${origin}/api/repartidores`, { method: 'POST', headers: adminCsrfHeaders, body: JSON.stringify({ nombre: name }) });
+    const response = await fetchLocal(`${origin}/api/repartidores`, { method: 'POST', headers: adminCsrfHeaders, body: JSON.stringify({ nombre: name }) });
     check(response.status === 201, `ADMIN_GENERAL no pudo crear fixture Repartidor (HTTP ${response.status}).`);
     const courier = await response.json();
     demoCourierIds.push(courier.id);
@@ -161,7 +172,7 @@ try {
   const createProfile = async (name, roleCodes, repartidorId) => {
     const profilePassword = randomBytes(24).toString('base64url');
     const profileEmail = `${name.toLowerCase().replaceAll('_', '-')}-${suffix}@example.invalid`;
-    const response = await globalThis.fetch(`${origin}/api/auth/users`, {
+    const response = await fetchLocal(`${origin}/api/auth/users`, {
       method: 'POST', headers: adminCsrfHeaders,
       body: JSON.stringify({ nombre: `Auth Smoke ${name}`, email: profileEmail, password: profilePassword, roles: roleCodes, ...(repartidorId ? { repartidorId } : {}) }),
     });
@@ -175,7 +186,7 @@ try {
     check(correlated.some((event) => event.accion === 'MUTATION_REQUESTED') && correlated.some((event) => event.accion === 'MUTATION_SUCCEEDED'), `La solicitud de creación de ${name} no tiene ciclo REQUESTED/SUCCEEDED.`);
     check(correlated.every((event) => !JSON.stringify(event.metadata).match(/password|cookie|token|hash/i)), `La auditoría de ${name} filtró metadatos sensibles.`);
     const session = await loginUser(profileEmail, profilePassword);
-    const sessionResponse = await globalThis.fetch(`${origin}/api/auth/session`, { headers: { Cookie: session.cookie } });
+    const sessionResponse = await fetchLocal(`${origin}/api/auth/session`, { headers: { Cookie: session.cookie } });
     check(sessionResponse.status === 200, `El perfil ${name} no pudo iniciar sesión.`);
     const publicProfile = await sessionResponse.json();
     check(publicProfile.roles.length === roleCodes.length && roleCodes.every((code) => publicProfile.roles.includes(code)), `El perfil ${name} no conserva los roles solicitados.`);
@@ -186,27 +197,27 @@ try {
   const productionOperator = await createProfile('OPERADOR_PRODUCCION', ['OPERADOR_PRODUCCION']);
   const courierProfile = await createProfile('REPARTIDOR', ['REPARTIDOR'], courierId);
   const multiProfile = await createProfile('MULTI_ROLE', ['ADMIN_SUCURSALES', 'OPERADOR_PRODUCCION']);
-  const branchAllowed = await globalThis.fetch(`${origin}/api/sucursales`, { headers: { Cookie: branchAdmin.session.cookie } });
-  const branchDenied = await globalThis.fetch(`${origin}/api/auth/users`, { headers: { Cookie: branchAdmin.session.cookie } });
+  const branchAllowed = await fetchLocal(`${origin}/api/sucursales`, { headers: { Cookie: branchAdmin.session.cookie } });
+  const branchDenied = await fetchLocal(`${origin}/api/auth/users`, { headers: { Cookie: branchAdmin.session.cookie } });
   check(branchAllowed.status === 200 && branchDenied.status === 403, 'ADMIN_SUCURSALES no respetó la separación de permisos.');
-  const productionAllowed = await globalThis.fetch(`${origin}/api/yogurt-base?fecha=${new Date().toISOString().slice(0, 10)}`, { headers: { Cookie: productionOperator.session.cookie } });
-  const productionDenied = await globalThis.fetch(`${origin}/api/clientes`, { headers: { Cookie: productionOperator.session.cookie } });
+  const productionAllowed = await fetchLocal(`${origin}/api/yogurt-base?fecha=${new Date().toISOString().slice(0, 10)}`, { headers: { Cookie: productionOperator.session.cookie } });
+  const productionDenied = await fetchLocal(`${origin}/api/clientes`, { headers: { Cookie: productionOperator.session.cookie } });
   check(productionAllowed.status === 200 && productionDenied.status === 403, `OPERADOR_PRODUCCION no respetó la separación de permisos (permitido ${productionAllowed.status}, restringido ${productionDenied.status}).`);
-  const multiBranch = await globalThis.fetch(`${origin}/api/sucursales`, { headers: { Cookie: multiProfile.session.cookie } });
-  const multiProduction = await globalThis.fetch(`${origin}/api/yogurt-base?fecha=${new Date().toISOString().slice(0, 10)}`, { headers: { Cookie: multiProfile.session.cookie } });
+  const multiBranch = await fetchLocal(`${origin}/api/sucursales`, { headers: { Cookie: multiProfile.session.cookie } });
+  const multiProduction = await fetchLocal(`${origin}/api/yogurt-base?fecha=${new Date().toISOString().slice(0, 10)}`, { headers: { Cookie: multiProfile.session.cookie } });
   check(multiBranch.status === 200 && multiProduction.status === 200, 'Los permisos de roles múltiples no se combinaron.');
-  const courierListResponse = await globalThis.fetch(`${origin}/api/repartidores`, { headers: { Cookie: courierProfile.session.cookie } });
+  const courierListResponse = await fetchLocal(`${origin}/api/repartidores`, { headers: { Cookie: courierProfile.session.cookie } });
   const courierList = await courierListResponse.json();
   check(courierListResponse.status === 200 && courierList.length === 1 && courierList[0].id === courierId, 'REPARTIDOR pudo listar identidades fuera de su asociación.');
-  const courierIdor = await globalThis.fetch(`${origin}/api/repartidores/${otherCourierId}`, { headers: { Cookie: courierProfile.session.cookie } });
+  const courierIdor = await fetchLocal(`${origin}/api/repartidores/${otherCourierId}`, { headers: { Cookie: courierProfile.session.cookie } });
   check(courierIdor.status === 403, 'REPARTIDOR pudo consultar otra identidad.');
   const courierCsrf = courierProfile.session.cookies.find((pair) => pair.startsWith(`${csrfCookieName}=`))?.split('=', 2)[1];
-  const spoofedCourierVisit = await globalThis.fetch(`${origin}/api/clientes/1/visitas`, {
+  const spoofedCourierVisit = await fetchLocal(`${origin}/api/clientes/1/visitas`, {
     method: 'POST', headers: { Origin: origin, Cookie: courierProfile.session.cookie, 'X-CSRF-Token': courierCsrf, 'Content-Type': 'application/json' },
     body: JSON.stringify({ repartidorId: otherCourierId }),
   });
   check(spoofedCourierVisit.status === 403, 'REPARTIDOR pudo suplantar otra identidad en una visita.');
-  const invalidBusinessRequest = await globalThis.fetch(`${origin}/api/yogurt-base/lotes`, {
+  const invalidBusinessRequest = await fetchLocal(`${origin}/api/yogurt-base/lotes`, {
     method: 'POST', headers: { Origin: origin, Cookie: productionOperator.session.cookie, 'X-CSRF-Token': productionOperator.session.cookies.find((pair) => pair.startsWith(`${csrfCookieName}=`))?.split('=', 2)[1], 'Content-Type': 'application/json' },
     body: JSON.stringify({}),
   });
@@ -216,7 +227,7 @@ try {
   check(invalidAudit.some((event) => event.accion === 'MUTATION_FAILED' && event.resultado === 'FAILED' && event.actorUsuarioId === productionOperator.account.id), 'El fallo de validación no quedó auditado con el actor autenticado.');
   check(invalidAudit.every((event) => !JSON.stringify(event.metadata).match(/password|cookie|token|hash/i)), 'La auditoría del fallo de negocio filtró secretos.');
   const managedPassword = randomBytes(24).toString('base64url');
-  const createManaged = await globalThis.fetch(`${origin}/api/auth/users`, {
+  const createManaged = await fetchLocal(`${origin}/api/auth/users`, {
     method: 'POST', headers: { Origin: origin, Cookie: adminCookieHeader, 'X-CSRF-Token': adminCsrfToken, 'Content-Type': 'application/json' },
     body: JSON.stringify({ nombre: 'Managed Auth Test', email: `managed-${suffix}@example.invalid`, password: managedPassword, roles: ['OPERADOR_PRODUCCION'] }),
   });
@@ -224,50 +235,50 @@ try {
   managedUserId = (await createManaged.json()).id;
   const managedEmail = `managed-${suffix}@example.invalid`;
   const beforeRoleChange = await loginUser(managedEmail, managedPassword);
-  const managedBeforeRoleChange = await globalThis.fetch(`${origin}/api/auth/session`, { headers: { Cookie: beforeRoleChange.cookie } });
+  const managedBeforeRoleChange = await fetchLocal(`${origin}/api/auth/session`, { headers: { Cookie: beforeRoleChange.cookie } });
   check(managedBeforeRoleChange.status === 200, 'La nueva cuenta no inició sesión antes de cambiar roles.');
-  const roleUpdate = await globalThis.fetch(`${origin}/api/auth/users/${managedUserId}/roles`, {
+  const roleUpdate = await fetchLocal(`${origin}/api/auth/users/${managedUserId}/roles`, {
     method: 'PUT', headers: { Origin: origin, Cookie: adminCookieHeader, 'X-CSRF-Token': adminCsrfToken, 'Content-Type': 'application/json' },
     body: JSON.stringify({ roles: ['ADMIN_SUCURSALES'] }),
   });
   check(roleUpdate.status === 200, 'El cambio de roles no pudo guardarse.');
-  const revokedByRoleChange = await globalThis.fetch(`${origin}/api/auth/session`, { headers: { Cookie: beforeRoleChange.cookie } });
+  const revokedByRoleChange = await fetchLocal(`${origin}/api/auth/session`, { headers: { Cookie: beforeRoleChange.cookie } });
   check(revokedByRoleChange.status === 401, 'El cambio de roles dejó vigente la sesión anterior.');
   const afterRoleChange = await loginUser(managedEmail, managedPassword);
-  const managedAfterRoleChange = await globalThis.fetch(`${origin}/api/auth/session`, { headers: { Cookie: afterRoleChange.cookie } });
+  const managedAfterRoleChange = await fetchLocal(`${origin}/api/auth/session`, { headers: { Cookie: afterRoleChange.cookie } });
   check(managedAfterRoleChange.status === 200, 'El usuario no pudo iniciar una sesión con el rol actualizado.');
-  const deniedAfterRoleChange = await globalThis.fetch(`${origin}/api/auth/users`, { headers: { Cookie: afterRoleChange.cookie } });
+  const deniedAfterRoleChange = await fetchLocal(`${origin}/api/auth/users`, { headers: { Cookie: afterRoleChange.cookie } });
   check(deniedAfterRoleChange.status === 403, 'ADMIN_SUCURSALES obtuvo permisos de administración general.');
   const replacementPassword = randomBytes(24).toString('base64url');
-  const passwordReset = await globalThis.fetch(`${origin}/api/auth/users/${managedUserId}/password`, {
+  const passwordReset = await fetchLocal(`${origin}/api/auth/users/${managedUserId}/password`, {
     method: 'PATCH', headers: { Origin: origin, Cookie: adminCookieHeader, 'X-CSRF-Token': adminCsrfToken, 'Content-Type': 'application/json' },
     body: JSON.stringify({ password: replacementPassword }),
   });
   check(passwordReset.status === 200, 'El restablecimiento de contraseña falló.');
-  const revokedByPasswordReset = await globalThis.fetch(`${origin}/api/auth/session`, { headers: { Cookie: afterRoleChange.cookie } });
+  const revokedByPasswordReset = await fetchLocal(`${origin}/api/auth/session`, { headers: { Cookie: afterRoleChange.cookie } });
   check(revokedByPasswordReset.status === 401, 'El restablecimiento de contraseña dejó vigente una sesión anterior.');
-  const deactivateManaged = await globalThis.fetch(`${origin}/api/auth/users/${managedUserId}/active`, {
+  const deactivateManaged = await fetchLocal(`${origin}/api/auth/users/${managedUserId}/active`, {
     method: 'PATCH', headers: { Origin: origin, Cookie: adminCookieHeader, 'X-CSRF-Token': adminCsrfToken, 'Content-Type': 'application/json' },
     body: JSON.stringify({ activo: false }),
   });
   check(deactivateManaged.status === 200, 'No se pudo desactivar al usuario de prueba.');
   const activeAdminsBeforeDeactivation = await prisma.usuarioInterno.count({ where: { activo: true, roles: { some: { rol: { codigo: 'ADMIN_GENERAL' } } } } });
-  const deactivateLastAdmin = await globalThis.fetch(`${origin}/api/auth/users/${adminUserId}/active`, {
+  const deactivateLastAdmin = await fetchLocal(`${origin}/api/auth/users/${adminUserId}/active`, {
     method: 'PATCH', headers: { Origin: origin, Cookie: adminCookieHeader, 'X-CSRF-Token': adminCsrfToken, 'Content-Type': 'application/json' },
     body: JSON.stringify({ activo: false }),
   });
   check(deactivateLastAdmin.status === (activeAdminsBeforeDeactivation === 1 ? 409 : 200), 'La protección de último administrador no coincide con la cantidad de admins activos.');
   if (activeAdminsBeforeDeactivation === 1) {
-    const adminLogout = await globalThis.fetch(`${origin}/api/auth/logout`, {
+    const adminLogout = await fetchLocal(`${origin}/api/auth/logout`, {
       method: 'POST', headers: { Origin: origin, Cookie: adminCookieHeader, 'X-CSRF-Token': adminCsrfToken },
     });
     check(adminLogout.status === 200, 'No se pudo cerrar la sesión administradora de prueba.');
   } else {
-    const revokedAdminSession = await globalThis.fetch(`${origin}/api/auth/session`, { headers: { Cookie: adminCookieHeader } });
+    const revokedAdminSession = await fetchLocal(`${origin}/api/auth/session`, { headers: { Cookie: adminCookieHeader } });
     check(revokedAdminSession.status === 401, 'Desactivar la cuenta no revocó su sesión.');
   }
 
-  const rateCsrfResponse = await globalThis.fetch(`${origin}/api/auth/csrf`);
+  const rateCsrfResponse = await fetchLocal(`${origin}/api/auth/csrf`);
   const rateCsrfBody = await rateCsrfResponse.json();
   const rateCookies = cookiePairs(rateCsrfResponse.headers.getSetCookie());
   const rateSessionPair = rateCookies.find((pair) => pair.startsWith(`${sessionCookieName}=`));
@@ -275,7 +286,7 @@ try {
   anonymousTokenHashes.push(sha256(decodeURIComponent(rateSessionPair.slice(sessionCookieName.length + 1))));
   const rateAttempts = [];
   for (let attempt = 0; attempt < 11; attempt++) {
-    rateAttempts.push(await globalThis.fetch(`${origin}/api/auth/login`, {
+    rateAttempts.push(await fetchLocal(`${origin}/api/auth/login`, {
       method: 'POST', headers: { Origin: origin, Cookie: cookieHeader(rateCookies), 'X-CSRF-Token': rateCsrfBody.csrfToken, 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: `rate-${suffix}@example.invalid`, password }),
     }));

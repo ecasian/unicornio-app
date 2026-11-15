@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link } from 'react-router';
 import { inventarioSucursalesApi, type TurnoInventario } from '../../shared/api/inventario-sucursales';
 
 export function ConsultaInventarioPage() {
@@ -16,8 +15,7 @@ export function ConsultaInventarioPage() {
   const data = summary.data;
   const error = (catalogs.error || summary.error) as Error | null;
 
-  return <main className="min-h-screen bg-slate-50 text-slate-900">
-    <header className="bg-fuchsia-800 px-4 py-4 text-white"><div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2"><Link to="/" className="font-semibold underline">Unicornio</Link><nav className="flex gap-4"><Link to="/inventario-sucursales" className="underline">Captura por turno</Link><span>Consulta de inventarios</span></nav></div></header>
+  return <section className="space-y-5">
     <div className="mx-auto max-w-5xl space-y-5 px-4 py-6">
       <section className="rounded-xl bg-white p-5 shadow-sm"><h1 className="text-2xl font-bold">Inventarios confirmados</h1><p className="mt-1 text-slate-600">Consulta una fecha y un turno. El detalle, el consolidado y los pendientes corresponden solo a esa combinación.</p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="grid gap-1 text-sm">Fecha operativa<input type="date" value={fechaActiva} onChange={(event) => setFecha(event.currentTarget.value)} className="min-h-11 rounded border px-3" /></label><label className="grid gap-1 text-sm">Turno<select value={turno} onChange={(event) => setTurno((event.currentTarget.value || '') as TurnoInventario | '')} className="min-h-11 rounded border px-3"><option value="">Seleccionar turno</option><option value="MATUTINO">Matutino</option><option value="VESPERTINO">Vespertino</option></select></label></div>
@@ -36,5 +34,5 @@ export function ConsultaInventarioPage() {
         {data.historicosAnterioresSinTurno.length > 0 && <section className="rounded-xl border border-slate-300 bg-slate-100 p-5"><h2 className="text-lg font-bold">Históricos anteriores sin turno</h2><p className="mt-1 text-sm text-slate-700">Se preservan como fueron capturados antes de esta adaptación. No se asignan a MATUTINO ni VESPERTINO y no entran en sus consolidados.</p><ul className="mt-3 grid gap-3 sm:grid-cols-2">{data.historicosAnterioresSinTurno.map(({ sucursalId, sucursal, reporte }) => <li key={sucursalId} className="rounded bg-white p-3"><strong>{sucursal} · {reporte.fecha}</strong>{reporte.detalles.map((detail) => <p key={detail.saborId} className="mt-1 flex justify-between gap-3"><span>{detail.sabor}</span><span>{detail.litros} L</span></p>)}</li>)}</ul></section>}
       </>}
     </div>
-  </main>;
+  </section>;
 }

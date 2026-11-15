@@ -130,14 +130,12 @@ describe('SaboresPage', () => {
     expect(container.textContent).toContain('Todavía no hay sabores');
   });
 
-  it('renders the list, global presentations and shared navigation', async () => {
+  it('renders the list and global presentations without duplicating app navigation', async () => {
     rows = [initial];
     await renderPage();
     expect(container.textContent).toContain('Fresa');
     expect(container.textContent).toContain('1 litro y 1/2 litro');
-    expect(button('Sucursales · Próximamente').disabled).toBe(true);
-    expect(container.querySelector('nav')?.textContent).toContain('Clientes');
-    expect(container.querySelector('nav')?.textContent).toContain('Repartidores');
+    expect(container.querySelector('nav[aria-label="Navegación de Administrador"]')).toBeNull();
     expect(listCalls).toBe(1);
   });
 

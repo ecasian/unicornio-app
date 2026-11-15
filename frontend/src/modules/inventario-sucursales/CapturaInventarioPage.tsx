@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link } from 'react-router';
 import { inventarioSucursalesApi, type TurnoInventario } from '../../shared/api/inventario-sucursales';
 
 type Detail = { saborId: number; litros: string };
@@ -45,8 +44,7 @@ export function CapturaInventarioPage() {
     setSaborId(''); setLitros('0'); setNotice('');
   }
 
-  return <main className="min-h-screen bg-slate-50 text-slate-900">
-    <header className="bg-fuchsia-800 px-4 py-4 text-white"><div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2"><Link to="/" className="font-semibold underline">Unicornio</Link><nav className="flex gap-4"><span>Captura por turno</span><Link to="/inventario-sucursales/consulta" className="underline">Consulta de inventarios</Link></nav></div></header>
+  return <section className="space-y-5">
     <div className="mx-auto max-w-5xl space-y-5 px-4 py-6">
       <section className="rounded-xl bg-white p-5 shadow-sm"><h1 className="text-2xl font-bold">Inventario de sucursales por turno</h1><p className="mt-1 text-slate-600">Registra litros físicos por sabor. Solo los sabores agregados aparecen en el reporte; un sabor ausente no equivale a cero.</p>
         <div className="mt-4 grid gap-3 sm:grid-cols-3"><label className="grid gap-1 text-sm">Fecha operativa<input type="date" value={fechaActiva} onChange={(event) => { setFecha(event.currentTarget.value); setDraftDetalles(null); setNotice(''); }} className="min-h-11 rounded border px-3" /></label><label className="grid gap-1 text-sm">Turno<select value={turno} onChange={(event) => { setTurno((event.currentTarget.value || '') as TurnoInventario | ''); setDraftDetalles(null); setNotice(''); }} className="min-h-11 rounded border px-3"><option value="">Seleccionar turno</option><option value="MATUTINO">Matutino</option><option value="VESPERTINO">Vespertino</option></select></label><label className="grid gap-1 text-sm">Sucursal<select value={sucursalId} onChange={(event) => { setSucursalId(event.currentTarget.value ? Number(event.currentTarget.value) : ''); setDraftDetalles(null); setNotice(''); }} className="min-h-11 rounded border px-3"><option value="">Seleccionar sucursal</option>{catalogs.data?.sucursales.map((branch) => <option key={branch.id} value={branch.id}>{branch.nombre}</option>)}</select></label></div>
@@ -67,5 +65,5 @@ export function CapturaInventarioPage() {
         {saved && !confirmado && detalles.length === 0 && <p className="text-sm text-amber-900">Para confirmar, agrega al menos un sabor con litros explícitos, incluso cero.</p>}
       </section>}
     </div>
-  </main>;
+  </section>;
 }

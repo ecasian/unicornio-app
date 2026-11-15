@@ -5,6 +5,7 @@ export class ApiError extends Error {
     readonly status: number,
     message: string,
     readonly body?: unknown,
+    readonly requestId?: string | null,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -80,7 +81,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   const body = parseBody(await response.text());
   if (!response.ok) {
-    throw new ApiError(response.status, errorMessage(response.status, body), body);
+    throw new ApiError(response.status, errorMessage(response.status, body), body, response.headers.get('X-Request-Id'));
   }
   return body as T;
 }

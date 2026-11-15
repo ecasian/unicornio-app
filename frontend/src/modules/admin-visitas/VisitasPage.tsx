@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { adminVisitasApi } from '../../shared/api/admin-visitas';
 import { clientesApi } from '../../shared/api/clientes';
 import { repartidoresApi } from '../../shared/api/repartidores';
-import { AdminHeader } from '../../shared/components/AdminHeader';
 
 function formatArrival(value: string, timezone: string, options: Intl.DateTimeFormatOptions) {
   return new Intl.DateTimeFormat('es-MX', { ...options, timeZone: timezone }).format(new Date(value));
@@ -29,13 +28,12 @@ export function VisitasPage() {
   const clientes = useQuery({ queryKey: ['clientes'], queryFn: clientesApi.list });
   const repartidores = useQuery({ queryKey: ['repartidores'], queryFn: repartidoresApi.list });
 
-  return <main className="min-h-screen bg-gradient-to-b from-fuchsia-900 via-fuchsia-800 to-fuchsia-950 pb-16 text-white">
-    <AdminHeader current="Visitas" />
-    <div className="mx-auto max-w-5xl space-y-6 px-4 pt-8 sm:px-6">
+  return <section className="space-y-6">
+      <div className="space-y-6">
       <div>
-        <p className="text-sm font-semibold uppercase tracking-widest text-fuchsia-200">Administrador</p>
+        <p className="text-sm font-semibold uppercase tracking-widest text-fuchsia-800">Administrador</p>
         <h1 className="text-3xl font-bold">Visitas</h1>
-        <p className="mt-2 text-fuchsia-100">Consulta las llegadas registradas por los repartidores en cada tienda.</p>
+        <p className="mt-2 text-slate-600">Consulta las llegadas registradas por los repartidores en cada tienda.</p>
       </div>
 
       <section aria-label="Filtros de visitas" className="grid gap-4 rounded-2xl bg-white p-5 text-slate-800 sm:grid-cols-3">
@@ -59,7 +57,7 @@ export function VisitasPage() {
         </label>
       </section>
 
-      {query.data && <p className="text-sm text-fuchsia-100">Fecha consultada: <strong>{formatBusinessDate(query.data.fecha)}</strong> ({query.data.timezone})</p>}
+      {query.data && <p className="text-sm text-slate-600">Fecha consultada: <strong>{formatBusinessDate(query.data.fecha)}</strong> ({query.data.timezone})</p>}
       {clientes.isError && <p role="alert" className="rounded-xl bg-red-100 p-4 text-red-900">No se pudieron cargar los clientes para filtrar.</p>}
       {repartidores.isError && <p role="alert" className="rounded-xl bg-red-100 p-4 text-red-900">No se pudieron cargar los repartidores para filtrar.</p>}
 
@@ -81,6 +79,6 @@ export function VisitasPage() {
               <p className="mt-2 font-bold text-fuchsia-900">{visita.cliente.nombre}</p><p className="text-sm text-slate-700">Repartidor: {visita.repartidor.nombre}</p>
             </li>)}</ul>
           </>}
-    </div>
-  </main>;
+      </div>
+  </section>;
 }

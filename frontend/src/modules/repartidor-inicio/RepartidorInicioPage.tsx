@@ -1,10 +1,13 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
+import { Link, useOutletContext } from 'react-router';
+import type { AuthUser } from '../../shared/api/auth';
 import { clientesApi } from '../../shared/api/clientes';
 import { existenciasApi, type ExistenciaItem, type RegistroExistencias } from '../../shared/api/existencias';
 import { repartidoresApi } from '../../shared/api/repartidores';
 import { stockObjetivoApi, type StockObjetivo } from '../../shared/api/stock-objetivo';
 import { visitasApi, type VisitaCliente } from '../../shared/api/visitas';
+import { ApiError } from '../../shared/api/request';
 import { ExistenciasForm } from './ExistenciasForm';
 
 function FlowHeader({ step }: { step: number }) {
@@ -14,22 +17,22 @@ function FlowHeader({ step }: { step: number }) {
     { name: 'Levantamiento', short: 'Captura' },
   ];
   return (
-    <header className="bg-fuchsia-950 px-4 pb-7 pt-7 text-white">
-      <div className="mx-auto max-w-3xl">
-        <p className="text-sm font-semibold tracking-widest text-pink-200 uppercase">Yogurt Unicornio</p>
-        <h1 className="mt-2 text-3xl font-bold">Ruta de reparto</h1>
-        <p className="mt-2 text-sm text-fuchsia-100">Consulta el surtido antes de iniciar tu visita.</p>
-        <ol aria-label="Progreso" className="mt-6 grid grid-cols-5 gap-1 sm:gap-2">
+    <section className="mx-auto max-w-3xl rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div>
+        <p className="text-sm font-semibold uppercase tracking-wide text-fuchsia-800">Reparto</p>
+        <h1 className="mt-1 text-2xl font-bold">Ruta de reparto</h1>
+        <p className="mt-2 text-sm text-slate-600">Consulta el surtido antes de iniciar tu visita.</p>
+        <ol aria-label="Progreso" className="mt-5 grid grid-cols-5 gap-1 sm:gap-2">
           {steps.map(({ name, short }, index) => (
             <li key={name} aria-label={`${index + 1}. ${name}`} aria-current={step === index + 1 ? 'step' : undefined}
-              className={`rounded-xl px-1 py-3 text-center text-[10px] font-semibold sm:px-2 sm:text-sm ${step === index + 1 ? 'bg-white text-fuchsia-950' : 'bg-fuchsia-800 text-fuchsia-100'}`}>
+              className={`rounded-lg px-1 py-3 text-center text-[10px] font-semibold sm:px-2 sm:text-sm ${step === index + 1 ? 'bg-fuchsia-800 text-white' : 'bg-slate-100 text-slate-700'}`}>
               <span aria-hidden="true" className="sm:hidden">{index + 1}. {short}</span>
               <span aria-hidden="true" className="hidden sm:inline">{index + 1}. {name}</span>
             </li>
           ))}
         </ol>
       </div>
-    </header>
+    </section>
   );
 }
 
@@ -75,7 +78,10 @@ function SurtidoResumen({ stock }: { stock: StockObjetivo[] }) {
 }
 
 export function RepartidorInicioPage() {
-  const [repartidorId, setRepartidorId] = useState<number | null>(null);
+  const user = useOutletContext<AuthUser>();
+  const isScopedCourier = user.roles.includes('REPARTIDOR') && !user.roles.includes('ADMIN_GENERAL');
+  const [selectedRepartidorId, setSelectedRepartidorId] = useState<number | null>(null);
+  const repartidorId = isScopedCourier ? user.repartidorId : selectedRepartidorId;
   const [clienteId, setClienteId] = useState<number | null>(null);
   const [visita, setVisita] = useState<VisitaCliente | null>(null);
   const [captureStock, setCaptureStock] = useState<StockObjetivo[] | null>(null);
@@ -89,7 +95,8 @@ export function RepartidorInicioPage() {
   const capturaHeading = useRef<HTMLHeadingElement>(null);
   const llegadaPendiente = useRef(false);
   const repartidores = useQuery({
-    queryKey: ['repartidores', 'activos'], queryFn: repartidoresApi.listActive, refetchOnMount: 'always',
+    queryKey: ['repartidores', 'activos', isScopedCourier ? user.id : 'all'], queryFn: repartidoresApi.listActive,
+    enabled: !isScopedCourier || Boolean(user.repartidorId), refetchOnMount: 'always',
   });
   const repartidor = repartidores.data?.find((item) => item.id === repartidorId && item.activo);
   const clientes = useQuery({
@@ -118,7 +125,8 @@ export function RepartidorInicioPage() {
   const paso = !repartidor ? 1 : !cliente ? 2 : captureStock || registro ? 5 : visitaActual ? 4 : 3;
 
   function cambiarRepartidor() {
-    setRepartidorId(null); setClienteId(null); setVisita(null); setCaptureStock(null); setRegistro(null); setCorrigiendo(false); setCorreccionGuardada(false); setPedidoAnterior(false); llegada.reset(); guardar.reset(); corregir.reset();
+    if (isScopedCourier) return;
+    setSelectedRepartidorId(null); setClienteId(null); setVisita(null); setCaptureStock(null); setRegistro(null); setCorrigiendo(false); setCorreccionGuardada(false); setPedidoAnterior(false); llegada.reset(); guardar.reset(); corregir.reset();
   }
 
   function cambiarCliente() {
@@ -139,10 +147,17 @@ export function RepartidorInicioPage() {
   }, [paso]);
 
   return (
-    <main className="min-h-screen bg-[#f7f3f7] text-slate-900">
+    <section className="space-y-5 text-slate-900">
       <FlowHeader step={paso} />
-      <div className="mx-auto max-w-3xl px-4 py-7 sm:px-6">
-        {!repartidor ? (
+      <div className="mx-auto w-full max-w-3xl space-y-4">
+        {isScopedCourier && !user.repartidorId ? <section className="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-amber-950" role="alert">
+          <h2 className="text-xl font-bold">Tu cuenta no tiene una ficha vinculada</h2>
+          <p className="mt-2">Solicita a una persona ADMIN_GENERAL que revise la asignación de la ficha. La administración actual permite asignarla al crear la cuenta.</p>
+        </section> : null}
+        {isScopedCourier && user.repartidorId && repartidores.isPending ? <p role="status">Cargando tu ficha de repartidor…</p> : null}
+        {isScopedCourier && user.repartidorId && repartidores.isError ? <Notice message={`No se pudo cargar tu ficha vinculada: ${repartidores.error.message}`} onRetry={() => { void repartidores.refetch(); }} /> : null}
+        {isScopedCourier && user.repartidorId && repartidores.isSuccess && !repartidor ? <p role="alert" className="rounded-2xl bg-amber-50 p-5 text-amber-950">La ficha vinculada no está disponible para operar. Consulta con ADMIN_GENERAL.</p> : null}
+        {!isScopedCourier && !repartidor ? (
           <section aria-labelledby="seleccionar-repartidor" className="space-y-4">
             <h2 id="seleccionar-repartidor" className="text-2xl font-bold">¿Quién realiza la visita?</h2>
             <p className="text-slate-600">Selecciona tu nombre para continuar.</p>
@@ -150,17 +165,17 @@ export function RepartidorInicioPage() {
               : repartidores.isError ? <Notice message={`No se pudieron cargar los repartidores: ${repartidores.error.message}`} onRetry={() => { void repartidores.refetch(); }} />
               : repartidores.data.filter((item) => item.activo).length === 0 ? <p className="rounded-2xl bg-white p-5">No hay repartidores activos disponibles.</p>
               : <ul className="space-y-3">{repartidores.data.filter((item) => item.activo).map((item) => <li key={item.id}>
-                <button type="button" aria-label={`Seleccionar repartidor ${item.nombre}`} onClick={() => { setRepartidorId(item.id); cambiarCliente(); }}
+                  <button type="button" aria-label={`Seleccionar repartidor ${item.nombre}`} onClick={() => { setSelectedRepartidorId(item.id); cambiarCliente(); }}
                   className="flex min-h-16 w-full items-center justify-between gap-3 rounded-2xl bg-white px-5 py-4 text-left text-lg font-semibold shadow-sm focus-visible:outline-4 focus-visible:outline-fuchsia-600">
                   <span>{item.nombre}</span><span aria-hidden="true" className="text-fuchsia-700">→</span>
                 </button>
               </li>)}</ul>}
           </section>
-        ) : !cliente ? (
+        ) : repartidor && !cliente ? (
           <section aria-labelledby="seleccionar-cliente" className="space-y-4">
-            <button type="button" onClick={cambiarRepartidor} className="min-h-11 font-semibold text-fuchsia-800 underline underline-offset-4">← Cambiar repartidor</button>
+            {!isScopedCourier && <button type="button" onClick={cambiarRepartidor} className="min-h-11 font-semibold text-fuchsia-800 underline underline-offset-4">← Cambiar repartidor</button>}
             <p className="text-sm text-slate-600">Repartidor: <strong>{repartidor.nombre}</strong></p>
-            <h2 id="seleccionar-cliente" ref={clienteHeading} tabIndex={-1} className="text-2xl font-bold">Selecciona el cliente</h2>
+            <h2 id="seleccionar-cliente" ref={clienteHeading} tabIndex={-1} className="text-2xl font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-700">Selecciona el cliente</h2>
             {clientes.isPending ? <p role="status">Cargando clientes…</p>
               : clientes.isError ? <Notice message={`No se pudieron cargar los clientes: ${clientes.error.message}`} onRetry={() => { void clientes.refetch(); }} />
               : clientes.data.filter((item) => item.activo).length === 0 ? <p className="rounded-2xl bg-white p-5">No hay clientes activos disponibles.</p>
@@ -173,16 +188,16 @@ export function RepartidorInicioPage() {
                 </button>
               </li>)}</ul>}
           </section>
-        ) : (
+        ) : repartidor && cliente ? (
           <section aria-labelledby="resumen-surtido" className="space-y-4">
             <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm font-semibold text-fuchsia-800">
-              <button type="button" disabled={guardar.isPending || corregir.isPending || llegada.isPending} onClick={cambiarRepartidor} className="min-h-11 underline underline-offset-4 disabled:opacity-50">← Cambiar repartidor</button>
+              {!isScopedCourier && <button type="button" disabled={guardar.isPending || corregir.isPending || llegada.isPending} onClick={cambiarRepartidor} className="min-h-11 underline underline-offset-4 disabled:opacity-50">← Cambiar repartidor</button>}
               <button type="button" disabled={guardar.isPending || corregir.isPending || llegada.isPending} onClick={cambiarCliente} className="min-h-11 underline underline-offset-4 disabled:opacity-50">← Cambiar cliente</button>
             </div>
             <p className="text-sm text-slate-600">Repartidor: <strong>{repartidor.nombre}</strong></p>
-            {registro ? <h2 id="resumen-surtido" ref={capturaHeading} tabIndex={-1} className="text-2xl font-bold">Existencias guardadas</h2>
-              : captureStock ? <h2 id="resumen-surtido" ref={capturaHeading} tabIndex={-1} className="text-2xl font-bold">Levantamiento de {cliente.nombre}</h2>
-                : <h2 id="resumen-surtido" ref={surtidoHeading} tabIndex={-1} className="text-2xl font-bold">Surtido de {cliente.nombre}</h2>}
+            {registro ? <h2 id="resumen-surtido" ref={capturaHeading} tabIndex={-1} className="text-2xl font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-700">Existencias guardadas</h2>
+              : captureStock ? <h2 id="resumen-surtido" ref={capturaHeading} tabIndex={-1} className="text-2xl font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-700">Levantamiento de {cliente.nombre}</h2>
+                : <h2 id="resumen-surtido" ref={surtidoHeading} tabIndex={-1} className="text-2xl font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-700">Surtido de {cliente.nombre}</h2>}
             <div className="rounded-2xl bg-white p-5 text-sm shadow-sm">
               <p><strong>Celular:</strong> {cliente.celular}</p>
               <p className="mt-1"><strong>Dirección:</strong> {cliente.direccion}</p>
@@ -198,6 +213,8 @@ export function RepartidorInicioPage() {
                   correctionDetails={registro.detalles} initialValues={registro.detalles} submitLabel="Guardar corrección" isSaving={corregir.isPending}
                   isStockUnavailable={stock.isPending || stock.isFetching || stock.isError}
                   saveError={corregir.error?.message ?? null}
+                  saveOutcomeUncertain={corregir.error instanceof ApiError ? corregir.error.status >= 500 : corregir.error instanceof TypeError}
+                  requestId={corregir.error instanceof ApiError ? corregir.error.requestId : null}
                   onSave={(items) => corregir.mutate({ clientId: cliente.id, registroId: registro.id, items, hadOrder: Boolean(registro.pedidoProduccion) })}
                   onReload={() => { setCorrigiendo(false); void stock.refetch(); corregir.reset(); }} />
               </>
@@ -211,7 +228,8 @@ export function RepartidorInicioPage() {
                 <p>Combinaciones registradas: {registro.detalles.length}</p>
                 {registro.pedidoProduccion ? (
                   <div className="mt-5 border-t border-green-300 pt-4">
-                    <p className="font-bold">{correccionGuardada && pedidoAnterior ? 'Pedido actualizado para producción' : 'Pedido enviado automáticamente a producción'}</p>
+                    <p className="font-bold">{correccionGuardada && pedidoAnterior ? 'Pedido actualizado para producción' : 'Pedido de producción generado'}</p>
+                    <p className="mt-1 text-sm">Este registro no confirma una entrega física a tiendas.</p>
                     <p className="mt-1">Pedido #{registro.pedidoProduccion.id}</p>
                     <ul className="mt-3 space-y-2" aria-label="Cantidades a producir">
                       {registro.pedidoProduccion.detalles.map((detalle) => (
@@ -223,8 +241,11 @@ export function RepartidorInicioPage() {
                     </ul>
                   </div>
                 ) : <div className="mt-4 font-bold">{correccionGuardada && pedidoAnterior && <p>El pedido anterior fue sustituido.</p>}<p>Este cliente no requiere producción.</p></div>}
-                {registro.vigente !== false && <button type="button" onClick={() => { setCorrigiendo(true); corregir.reset(); void stock.refetch(); }}
-                  className="mt-5 min-h-12 w-full rounded-full bg-fuchsia-700 px-6 font-bold text-white">Corregir existencias</button>}
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  <Link to="/" className="inline-flex min-h-12 items-center justify-center rounded-full bg-fuchsia-700 px-6 text-center font-bold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-800">Volver al inicio</Link>
+                  {registro.vigente !== false && <button type="button" onClick={() => { setCorrigiendo(true); corregir.reset(); void stock.refetch(); }}
+                    className="min-h-12 rounded-full border border-fuchsia-800 bg-white px-6 font-bold text-fuchsia-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-800">Corregir existencias</button>}
+                </div>
               </div>
             ) : captureStock ? (
               <>
@@ -233,6 +254,8 @@ export function RepartidorInicioPage() {
                 <ExistenciasForm initialStock={captureStock} currentStock={stock.data ?? captureStock}
                   isSaving={guardar.isPending} isStockUnavailable={stock.isError || stock.isFetching}
                   saveError={guardar.error?.message ?? null}
+                  saveOutcomeUncertain={guardar.error instanceof ApiError ? guardar.error.status >= 500 : guardar.error instanceof TypeError}
+                  requestId={guardar.error instanceof ApiError ? guardar.error.requestId : null}
                   onSave={(items) => { if (visitaActual) guardar.mutate({ clientId: cliente.id, driverId: repartidor.id, visitId: visitaActual.id, items }); }}
                   onReload={() => { setCaptureStock(null); guardar.reset(); void stock.refetch(); }} />
               </>
@@ -242,7 +265,7 @@ export function RepartidorInicioPage() {
                 <SurtidoResumen stock={stock.data} />
                 {visitaActual ? (
                   <div role="status" className="rounded-2xl border border-green-200 bg-green-50 p-5 text-green-950">
-                    <h3 ref={llegadaHeading} tabIndex={-1} className="text-lg font-bold">Llegada registrada</h3>
+                    <h3 ref={llegadaHeading} tabIndex={-1} className="text-lg font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-700">Llegada registrada</h3>
                     <p className="mt-2">{cliente.nombre}</p>
                     <p>{new Date(visitaActual.llegadaAt).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })}</p>
                   </div>
@@ -257,8 +280,8 @@ export function RepartidorInicioPage() {
                 </button>
               </>}
           </section>
-        )}
+        ) : null}
       </div>
-    </main>
+    </section>
   );
 }

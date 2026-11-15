@@ -38,6 +38,7 @@ let delayedStock: Promise<Response> | null;
 let delayedStockB: Promise<Response> | null;
 let delayedSave: Promise<Response> | null;
 let saveFailure: string | null;
+let saveNetworkFailure: boolean;
 let arrivalFailure: string | null;
 let delayedArrival: Promise<Response> | null;
 let arrivalId: number;
@@ -76,7 +77,11 @@ async function enter(label: string, value: string) {
   await flush();
 }
 
-async function renderFlow() {
+async function renderFlow(session: Record<string, unknown> = {
+  id: 2, email: 'admin@example.invalid', nombre: 'Admin Demo', repartidorId: null,
+  roles: ['ADMIN_GENERAL'], permissions: ['auth:session', 'reparto:operate', 'clientes:read', 'repartidores:read'],
+}) {
+  vi.stubGlobal('fetch', withCsrfMock(fetchMock, session));
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root.render(
@@ -98,6 +103,12 @@ async function openCapture() {
   return queryClient;
 }
 
+async function save(label = 'Guardar existencias') {
+  await click('Revisar registro');
+  const confirmLabel = label === 'Guardar existencias' ? 'Confirmar y guardar registro' : label;
+  if ([...container.querySelectorAll('button')].some((node) => node.textContent?.trim() === confirmLabel)) await click(confirmLabel);
+}
+
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   repartidores = [repartidor];
@@ -109,6 +120,7 @@ beforeEach(() => {
   delayedStockB = null;
   delayedSave = null;
   saveFailure = null;
+  saveNetworkFailure = false;
   arrivalFailure = null;
   delayedArrival = null;
   arrivalId = 11;
@@ -153,6 +165,7 @@ beforeEach(() => {
     }
     if (/\/clientes\/(3|4)\/registros-existencias$/.test(resource) && init?.method === 'POST') {
       if (delayedSave) return delayedSave;
+      if (saveNetworkFailure) throw new TypeError('Failed to fetch');
       if (saveFailure) return json({ message: saveFailure }, 400);
       const payload = JSON.parse(String(init.body)) as { repartidorId: number; visitaClienteId: number; existencias: unknown[] };
       const selectedClient = clientes.find((item) => resource.endsWith(`/clientes/${item.id}/registros-existencias`))!;
@@ -208,6 +221,25 @@ afterEach(async () => {
 });
 
 describe('inicio de Repartidor', () => {
+  it('usa la ficha vinculada sin pedir selección al perfil REPARTIDOR', async () => {
+    await renderFlow({ id: 7, email: 'driver@example.invalid', nombre: 'Cuenta Jonathan', repartidorId: 1,
+      roles: ['REPARTIDOR'], permissions: ['auth:session', 'reparto:operate'] });
+    expect(container.textContent).toContain('Repartidor: Jonathan');
+    expect(container.textContent).not.toContain('¿Quién realiza la visita?');
+    expect(container.querySelector('button[aria-label="Seleccionar repartidor Jonathan"]')).toBeNull();
+    expect(container.textContent).toContain('Selecciona el cliente');
+    expect(container.textContent).not.toContain('Cambiar repartidor');
+    expect([...container.querySelectorAll('button')].some((button) => button.textContent?.includes('Cambiar repartidor'))).toBe(false);
+  });
+
+  it('explica cómo resolver una cuenta REPARTIDOR sin ficha vinculada', async () => {
+    await renderFlow({ id: 8, email: 'unlinked@example.invalid', nombre: 'Cuenta sin ficha', repartidorId: null,
+      roles: ['REPARTIDOR'], permissions: ['auth:session', 'reparto:operate'] });
+    expect(container.textContent).toContain('Tu cuenta no tiene una ficha vinculada');
+    expect(container.textContent).toContain('ADMIN_GENERAL');
+    expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('/api/repartidores'))).toBe(false);
+  });
+
   it('muestra solo repartidores activos y mantiene la navegación separada', async () => {
     repartidores.push({ ...repartidor, id: 2, nombre: 'Inactivo', activo: false });
     await renderFlow();
@@ -396,11 +428,13 @@ describe('inicio de Repartidor', () => {
 
   it('captura todas las combinaciones, incluido cero, y confirma el snapshot', async () => {
     await openCapture();
+    const linksToHome = () => [...container.querySelectorAll<HTMLAnchorElement>('a[href="/"]')];
+    expect(linksToHome().some((link) => link.textContent?.trim() === 'Volver al inicio')).toBe(false);
     expect(container.textContent).toContain('Stock objetivo: 0 envases');
     expect(container.querySelectorAll('input[type="number"]')).toHaveLength(2);
     await enter('Fresa · 1 litro', '0');
     await enter('Fresa · 1/2 litro', '4');
-    await click('Guardar existencias');
+    await save('Guardar existencias');
     const post = fetchMock.mock.calls.find(([url, init]) => String(url).endsWith('/clientes/3/registros-existencias') && init?.method === 'POST');
     expect(post).toBeTruthy();
     expect(JSON.parse(String(post![1].body))).toEqual({ repartidorId: 1, visitaClienteId: 11, existencias: [
@@ -411,19 +445,42 @@ describe('inicio de Repartidor', () => {
     expect(container.textContent).toContain('Combinaciones registradas: 2');
     expect(container.textContent).toContain('Jonathan');
     expect(container.textContent).toContain('Punto Fresco');
-    expect(container.textContent).toContain('Pedido enviado automáticamente a producción');
+    expect(container.textContent).toContain('Pedido de producción generado');
     expect(container.textContent).toContain('Fresa · 1/2 litro');
     expect(container.textContent).toContain('2 envases');
     expect(container.textContent).not.toContain('Generar pedido');
     expect(container.textContent).not.toContain('Enviar a producción');
     expect(container.querySelectorAll('input[type="number"]')).toHaveLength(0);
+    const homeLink = linksToHome().find((link) => link.textContent?.trim() === 'Volver al inicio');
+    expect(homeLink).toBeTruthy();
+    const postCount = fetchMock.mock.calls.filter(([url, init]) => String(url).includes('/registros-existencias') && init?.method === 'POST').length;
+    await act(async () => homeLink?.click());
+    await flush();
+    expect(container.textContent).toContain('Estos son los procesos disponibles para tu cuenta.');
+    expect(container.textContent).toContain('Admin Demo');
+    expect(fetchMock.mock.calls.filter(([url, init]) => String(url).includes('/registros-existencias') && init?.method === 'POST')).toHaveLength(postCount);
+    expect(fetchMock.mock.calls.some(([url, init]) => String(url).includes('/auth/logout') && init?.method === 'POST')).toBe(false);
+  });
+
+  it('permite revisar y volver a editar antes de confirmar el registro', async () => {
+    await openCapture();
+    await enter('Fresa · 1 litro', '6');
+    await enter('Fresa · 1/2 litro', '0');
+    await click('Revisar registro');
+    expect(container.textContent).toContain('A registrar: 6 envases');
+    expect(container.textContent).toContain('0 (sin existencia)');
+    expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith('/registros-existencias') && init?.method === 'POST')).toBe(false);
+    await click('Volver a editar');
+    expect((container.querySelectorAll<HTMLInputElement>('input[type="number"]')[0]).value).toBe('6');
+    await save();
+    expect(container.textContent).toContain('Registro de existencias guardado correctamente');
   });
 
   it('confirma que no se requiere producción cuando el objetivo está cubierto', async () => {
     await openCapture();
     await enter('Fresa · 1 litro', '3');
     await enter('Fresa · 1/2 litro', '6');
-    await click('Guardar existencias');
+    await save('Guardar existencias');
     expect(container.textContent).toContain('Existencias guardadas');
     expect(container.textContent).toContain('Este cliente no requiere producción.');
     expect(container.textContent).not.toContain('Pedido enviado automáticamente');
@@ -447,7 +504,7 @@ describe('inicio de Repartidor', () => {
     expect((container.querySelector('input[type="number"]') as HTMLInputElement).value).toBe('');
     expect(container.textContent).not.toContain('Fresa');
     await enter('Nuez · 1 litro', '2');
-    await click('Guardar existencias');
+    await save('Guardar existencias');
     const posts = fetchMock.mock.calls.filter(([url, init]) => String(url).includes('/registros-existencias') && init?.method === 'POST');
     expect(posts).toHaveLength(1);
     expect(posts[0][0]).toBe('/api/clientes/4/registros-existencias');
@@ -461,10 +518,11 @@ describe('inicio de Repartidor', () => {
   it('rechaza un campo vacío y una cantidad negativa antes de llamar a la API', async () => {
     await openCapture();
     await enter('Fresa · 1 litro', '0');
-    await click('Guardar existencias');
+    await save('Guardar existencias');
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('campo vacío no equivale a cero');
+    expect(container.querySelector('input[aria-invalid="true"]')).toBeTruthy();
     await enter('Fresa · 1/2 litro', '-1');
-    await click('Guardar existencias');
+    await save('Guardar existencias');
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('entero no negativo');
     expect(fetchMock.mock.calls.some(([url, init]) => String(url).includes('/registros-existencias') && init?.method === 'POST')).toBe(false);
   });
@@ -475,12 +533,30 @@ describe('inicio de Repartidor', () => {
     await enter('Fresa · 1/2 litro', '0');
     let resolveSave!: (response: Response) => void;
     delayedSave = new Promise<Response>((resolve) => { resolveSave = resolve; });
-    await click('Guardar existencias');
-    expect(button('Guardando existencias…').disabled).toBe(true);
+    await save('Guardar existencias');
+    expect(button('Guardando registro…').disabled).toBe(true);
+    expect(fetchMock.mock.calls.filter(([url, init]) => String(url).includes('/registros-existencias') && init?.method === 'POST')).toHaveLength(1);
     await act(async () => { resolveSave(json({ message: 'Fallo del servidor' }, 500)); });
     await flush();
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('Fallo del servidor');
+    expect(container.querySelector('[role="note"]')?.textContent).toContain('El servidor no confirmó el resultado');
     expect((container.querySelector('input[type="number"]') as HTMLInputElement).value).toBe('3');
+  });
+
+  it('ante pérdida de respuesta conserva valores, informa resultado incierto y no reenvía', async () => {
+    await openCapture();
+    await enter('Fresa · 1 litro', '3');
+    await enter('Fresa · 1/2 litro', '0');
+    saveNetworkFailure = true;
+    await save('Guardar existencias');
+    const posts = fetchMock.mock.calls.filter(([url, init]) => String(url).includes('/registros-existencias') && init?.method === 'POST');
+    expect(posts).toHaveLength(1);
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Failed to fetch');
+    expect(container.querySelector('[role="note"]')?.textContent).toContain('Antes de reenviar, consulta Auditoría');
+    const inputs = [...container.querySelectorAll<HTMLInputElement>('input[type="number"]')];
+    expect(inputs.map((input) => input.value)).toEqual(['3', '0']);
+    await flush();
+    expect(fetchMock.mock.calls.filter(([url, init]) => String(url).includes('/registros-existencias') && init?.method === 'POST')).toHaveLength(1);
   });
 
   it('preserva la captura y bloquea el guardado si cambia el surtido remoto', async () => {
@@ -495,7 +571,7 @@ describe('inicio de Repartidor', () => {
     await flush();
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('configuración del surtido cambió');
     expect((container.querySelector('input[type="number"]') as HTMLInputElement).value).toBe('5');
-    expect(button('Guardar existencias').disabled).toBe(true);
+    expect(button('Revisar registro').disabled).toBe(true);
     await click('Recargar levantamiento');
     expect(container.querySelectorAll('input[type="number"]')).toHaveLength(0);
   });
@@ -505,24 +581,24 @@ describe('inicio de Repartidor', () => {
     await enter('Fresa · 1 litro', '1');
     await enter('Fresa · 1/2 litro', '2');
     saveFailure = 'El surtido operativo cambió. Recarga el levantamiento antes de guardar.';
-    await click('Guardar existencias');
+    await save('Guardar existencias');
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('configuración del surtido cambió');
-    expect(button('Guardar existencias').disabled).toBe(true);
+    expect(button('Confirmar y guardar registro').disabled).toBe(true);
   });
 
   it('precarga existencias, corrige solo cantidades y usa el nuevo registro en correcciones sucesivas', async () => {
     await openCapture();
     await enter('Fresa · 1 litro', '0');
     await enter('Fresa · 1/2 litro', '4');
-    await click('Guardar existencias');
+    await save('Guardar existencias');
     await click('Corregir existencias');
     const inputs = [...container.querySelectorAll<HTMLInputElement>('input[type="number"]')];
     expect(inputs.map((input) => input.value)).toEqual(['0', '4']);
     expect(container.textContent).toContain('Stock objetivo actual: 6 envases');
     expect(container.querySelectorAll('input')).toHaveLength(2);
-    expect(button('Guardar corrección').disabled).toBe(false);
+    expect(button('Revisar registro').disabled).toBe(false);
     await enter('Fresa · 1/2 litro', '0');
-    await click('Guardar corrección');
+    await save('Guardar corrección');
     const first = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/19/correcciones'));
     expect(first?.[1].method).toBe('POST');
     expect(JSON.parse(String(first?.[1].body))).toEqual({ existencias: [
@@ -534,7 +610,7 @@ describe('inicio de Repartidor', () => {
     await click('Corregir existencias');
     expect([...container.querySelectorAll<HTMLInputElement>('input[type="number"]')].map((input) => input.value)).toEqual(['0', '0']);
     await enter('Fresa · 1/2 litro', '6');
-    await click('Guardar corrección');
+    await save('Guardar corrección');
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/21/correcciones'))).toBe(true);
     expect(container.textContent).toContain('Corrección guardada correctamente');
     expect(container.textContent).toContain('Este cliente no requiere producción.');
@@ -553,7 +629,7 @@ describe('inicio de Repartidor', () => {
     const queryClient = await openCapture();
     await enter('Fresa · 1 litro', '7');
     await enter('Fresa · 1/2 litro', '3');
-    await click('Guardar existencias');
+    await save('Guardar existencias');
     stock = current;
     await act(async () => { await queryClient.invalidateQueries({ queryKey: ['surtido-operativo', 3] }); });
     await click('Corregir existencias');
@@ -561,7 +637,7 @@ describe('inicio de Repartidor', () => {
     expect(labels).toEqual(['Fresa · 1 litro', 'Fresa · 1/2 litro']);
     expect([...container.querySelectorAll<HTMLInputElement>('input[type="number"]')].map((input) => input.value)).toEqual(['7', '3']);
     expect(container.textContent).not.toContain('Nuez');
-    expect(button('Guardar corrección').disabled).toBe(changed);
+    expect(button('Revisar registro').disabled).toBe(changed);
     expect(container.textContent?.includes('Este registro no puede corregirse con la configuración actual.')).toBe(changed);
     if (current.length === 1 || (changed && current.length === 2)) {
       expect(container.textContent).toContain('Stock objetivo actual: no disponible');
@@ -572,18 +648,18 @@ describe('inicio de Repartidor', () => {
     await openCapture();
     await enter('Fresa · 1 litro', '0');
     await enter('Fresa · 1/2 litro', '4');
-    await click('Guardar existencias');
+    await save('Guardar existencias');
     await click('Corregir existencias');
     await enter('Fresa · 1/2 litro', '');
-    await click('Guardar corrección');
+    await save('Guardar corrección');
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('campo vacío');
     await enter('Fresa · 1/2 litro', '-1');
-    await click('Guardar corrección');
+    await save('Guardar corrección');
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('entero no negativo');
     expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/correcciones'))).toHaveLength(0);
     await enter('Fresa · 1/2 litro', '0');
     correctionFailure = 'Este levantamiento ya fue corregido. Recarga la información antes de continuar.';
-    await click('Guardar corrección');
+    await save('Guardar corrección');
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('ya fue corregido');
     expect((container.querySelectorAll<HTMLInputElement>('input[type="number"]')[1]).value).toBe('0');
   });
@@ -592,13 +668,13 @@ describe('inicio de Repartidor', () => {
     await openCapture();
     await enter('Fresa · 1 litro', '0');
     await enter('Fresa · 1/2 litro', '6');
-    await click('Guardar existencias');
+    await save('Guardar existencias');
     expect(container.textContent).toContain('Este cliente no requiere producción.');
     await click('Corregir existencias');
     await enter('Fresa · 1/2 litro', '3');
-    await click('Guardar corrección');
+    await save('Guardar corrección');
     expect(container.textContent).toContain('Corrección guardada correctamente');
-    expect(container.textContent).toContain('Pedido enviado automáticamente a producción');
+    expect(container.textContent).toContain('Pedido de producción generado');
     expect(container.textContent).toContain('3 envases');
   });
 });

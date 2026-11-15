@@ -64,13 +64,12 @@ export function AbastecimientoSucursalesPage() {
   const query = useQuery({ queryKey: queryKey(fecha), queryFn: () => abastecimientoSucursalesApi.resumen(fecha), retry: false, staleTime: 0, refetchOnMount: 'always' });
   const data = query.data;
 
-  return <div className="min-h-screen bg-slate-50 text-slate-900">
-    <header className="bg-indigo-800 px-4 py-4 text-white"><div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3"><div><Link to="/" className="font-semibold underline underline-offset-4">Unicornio</Link><span className="mx-2" aria-hidden="true">/</span><Link to="/produccion" className="underline">Producción</Link><span className="mx-2" aria-hidden="true">/</span><span>Abastecimiento aprobado</span></div><Link to="/sucursales/propuesta-abastecimiento" className="text-sm underline">Propuestas diarias</Link></div></header>
-    <main className="mx-auto max-w-6xl space-y-5 px-4 py-6 sm:px-6">
+  return <div className="space-y-5">
+    <section className="mx-auto max-w-6xl space-y-5 px-4 py-6 sm:px-6">
       <section className="rounded-xl bg-white p-5 shadow-sm"><h1 className="text-2xl font-bold">Consolidado de abastecimiento aprobado</h1><p className="mt-1 text-slate-600">Consulta de solo lectura de la última versión aprobada y vigente por sucursal. Este resumen no registra producción fabricada ni mueve inventario.</p><label className="mt-4 grid max-w-xs gap-1 text-sm font-medium">Fecha operativa<input type="date" value={fecha ?? data?.fecha ?? ''} onChange={(event) => setFecha(event.currentTarget.value || undefined)} className="min-h-11 rounded-lg border border-slate-300 px-3" /></label>{data && <p className="mt-2 text-sm text-slate-600">Fecha consultada: {data.fecha} ({data.timezone})</p>}</section>
       {query.isPending && <p role="status" aria-live="polite" className="rounded-lg bg-white p-5">Cargando consolidado…</p>}
       {query.isError && <section role="alert" className="rounded-lg border border-red-200 bg-red-50 p-5"><p>No se pudo cargar el abastecimiento aprobado: {query.error.message}</p><button type="button" onClick={() => void query.refetch()} className="mt-3 min-h-11 rounded-lg bg-red-700 px-4 font-semibold text-white">Reintentar</button></section>}
       {data && <DailySummary data={data} />}
-    </main>
+    </section>
   </div>;
 }

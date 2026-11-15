@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { useOutletContext } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { authApi, type InternalUser } from '../../shared/api/auth';
+import { authApi, type AuthUser, type InternalUser } from '../../shared/api/auth';
+import { repartidoresApi } from '../../shared/api/repartidores';
 
 const roleLabels: Record<string, string> = {
   ADMIN_GENERAL: 'Administrador general',
@@ -10,6 +12,7 @@ const roleLabels: Record<string, string> = {
 };
 
 export function AdminUsersPage() {
+  const currentUserPermissions = useOutletContext<AuthUser | undefined>()?.permissions ?? [];
   const queryClient = useQueryClient();
   const [form, setForm] = useState({ nombre: '', email: '', password: '', roles: [] as string[], repartidorId: '' });
   const [pendingRoles, setPendingRoles] = useState<Record<number, string[]>>({});
@@ -17,6 +20,7 @@ export function AdminUsersPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const users = useQuery({ queryKey: ['auth', 'users'], queryFn: authApi.users });
+  const allCouriers = useQuery({ queryKey: ['repartidores', 'admin-users'], queryFn: repartidoresApi.list, enabled: currentUserPermissions.includes('repartidores:read') });
   const roles = useQuery({ queryKey: ['auth', 'roles'], queryFn: authApi.roles });
   const needsCourier = form.roles.includes('REPARTIDOR');
   const couriers = useQuery({ queryKey: ['auth', 'active-couriers'], queryFn: authApi.activeCouriers, enabled: needsCourier });
@@ -55,9 +59,9 @@ export function AdminUsersPage() {
     </label>)}
   </fieldset>;
   return <section className="space-y-6">
-    <header><h1 className="text-2xl font-semibold">Usuarios y roles</h1><p className="mt-1 text-sm text-slate-600">Las cuentas no se eliminan; se desactivan. Cambiar roles revoca sus sesiones activas.</p></header>
+    <header><p className="text-sm font-semibold uppercase tracking-wide text-slate-600">Administración · Acceso</p><h1 className="mt-1 text-2xl font-semibold">Cuentas y permisos</h1><p className="mt-1 text-sm text-slate-600">La cuenta inicia sesión; la ficha identifica al repartidor en visitas y registros. Las cuentas no se eliminan: se desactivan. Cambiar roles revoca sesiones.</p></header>
     <form className="space-y-4 rounded-lg border bg-white p-4" onSubmit={(event) => { event.preventDefault(); create.mutate(); }}>
-      <h2 className="text-lg font-medium">Crear usuario interno</h2>
+      <h2 className="text-lg font-medium">Crear cuenta interna</h2>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm">Nombre<input required minLength={2} className="mt-1 block w-full rounded border px-3 py-2" value={form.nombre} onChange={(event) => setForm({ ...form, nombre: event.target.value })} /></label>
         <label className="text-sm">Correo<input required type="email" autoComplete="off" className="mt-1 block w-full rounded border px-3 py-2" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
@@ -70,6 +74,7 @@ export function AdminUsersPage() {
           {couriers.isPending && <span role="status" className="mt-1 block">Cargando repartidores…</span>}
           {couriers.error && <span role="alert" className="mt-1 block text-red-700">{couriers.error.message}</span>}
           {couriers.data?.length === 0 && <span className="mt-1 block text-amber-700">No hay Repartidores activos para asignar.</span>}
+          <span className="mt-1 block text-slate-600">Esta ficha se vincula al crear la cuenta. El formulario de roles no permite cambiarla después.</span>
         </label>}
       </div>
       {roleInput(form.roles, (selected) => setForm({ ...form, roles: selected, repartidorId: selected.includes('REPARTIDOR') ? form.repartidorId : '' }), 'Crear')}
@@ -77,16 +82,19 @@ export function AdminUsersPage() {
     </form>
     {message && <p role="status" className="text-sm text-green-800">{message}</p>}
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+    {currentUserPermissions.includes('repartidores:read') && allCouriers.isPending && <p role="status">Consultando nombres y estado de las fichas vinculadas…</p>}
+    {currentUserPermissions.includes('repartidores:read') && allCouriers.error && <p role="alert">No se pudieron consultar las fichas vinculadas: {allCouriers.error.message}</p>}
     <section className="space-y-3" aria-label="Usuarios existentes">
-      <h2 className="text-lg font-medium">Cuentas</h2>
+      <h2 className="text-lg font-medium">Cuentas existentes</h2>
       {users.isPending && <p role="status">Cargando usuarios…</p>}
       {users.error && <p role="alert">{users.error.message}</p>}
       {users.data?.length === 0 && <p>No hay usuarios registrados.</p>}
       {users.data?.map((user: InternalUser) => {
         const selected = pendingRoles[user.id] ?? user.roles.map(({ rol }) => rol.codigo);
+        const courier = user.repartidorId ? allCouriers.data?.find((item) => item.id === user.repartidorId) : undefined;
         return <article key={user.id} className="space-y-3 rounded-lg border bg-white p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><h3 className="font-medium">{user.nombre}</h3><p className="text-sm text-slate-600">{user.email}{user.repartidorId ? ` · Repartidor ${user.repartidorId}` : ''}</p></div>
+            <div><h3 className="font-medium">{user.nombre}</h3><p className="text-sm text-slate-600">{user.email}</p>{user.repartidorId && <p className="text-sm text-slate-700">Ficha vinculada: {courier ? `${courier.nombre} · ${courier.activo ? 'Activa' : 'Inactiva'}` : `ID ${user.repartidorId}${currentUserPermissions.includes('repartidores:read') ? '' : ' · sin permiso para consultar su nombre y estado'}`}</p>}</div>
             <button className="rounded border px-3 py-2 text-sm" disabled={setActive.isPending} onClick={() => setActive.mutate({ id: user.id, activo: !user.activo })}>{user.activo ? 'Desactivar' : 'Activar'}</button>
           </div>
           {roleInput(selected, (next) => setPendingRoles({ ...pendingRoles, [user.id]: next }), `Usuario ${user.email}`)}

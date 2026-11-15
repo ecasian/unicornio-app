@@ -94,7 +94,7 @@ describe('VisitasPage', () => {
     await renderPage();
     expect(fetchMock.mock.calls.some(([url]) => url === '/api/admin/visitas')).toBe(true);
     expect(dateInput().value).toBe('2026-10-07');
-    expect(container.querySelector('nav[aria-label="Navegación de Administrador"]')?.textContent).toContain('Visitas');
+    expect(container.querySelector('nav[aria-label="Navegación de Administrador"]')).toBeNull();
     expect(container.querySelector('a[href="/admin/visitas"]')).toBeNull();
     expect(container.textContent).toContain('Visitas');
     expect(container.querySelectorAll('tbody tr')).toHaveLength(2);
@@ -106,7 +106,6 @@ describe('VisitasPage', () => {
     expect(selectFor('Cliente').textContent).toContain('Tienda Histórica · Inactivo');
     expect(selectFor('Repartidor').textContent).toContain('Ana · Inactivo');
     expect([...container.querySelectorAll('button')].filter((button) => !button.disabled)).toHaveLength(0);
-    expect([...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Sucursales'))?.disabled).toBe(true);
     expect(fetchMock.mock.calls.every(([, init]) => init?.method === undefined || init?.method === 'GET')).toBe(true);
   });
 

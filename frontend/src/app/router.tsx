@@ -15,7 +15,7 @@ import { PropuestaAbastecimientoPage } from '../modules/propuesta-abastecimiento
 import { AbastecimientoSucursalesPage } from '../modules/abastecimiento-sucursales/AbastecimientoSucursalesPage';
 import { AdminUsersPage } from '../modules/auth/AdminUsersPage';
 import { AuditPage } from '../modules/auth/AuditPage';
-import { AuthenticatedLayout, HomePage, LoginPage } from './AuthPages';
+import { AuthenticatedLayout, HomePage, LoginPage, RouteNotFound } from './AuthPages';
 
 export function AppRouter() {
   return (
@@ -39,6 +39,7 @@ export function AppRouter() {
       <Route path="/admin/sabores" element={<SaboresPage />} />
       <Route path="/admin/usuarios" element={<AdminUsersPage />} />
       <Route path="/admin/auditoria" element={<AuditPage />} />
+      <Route path="*" element={<RouteNotFound />} />
       </Route>
     </Routes>
   );

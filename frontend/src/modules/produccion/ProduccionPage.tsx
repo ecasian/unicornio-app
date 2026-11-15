@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link } from 'react-router';
 import { produccionApi } from '../../shared/api/produccion';
 
 const queryKey = (fecha?: string) => ['produccion', fecha ?? 'ayer'] as const;
@@ -23,21 +22,15 @@ export function ProduccionPage() {
     else setFecha(undefined);
   };
 
-  return <div className="min-h-screen bg-slate-50 text-slate-900">
-    <header className="bg-indigo-800 px-4 py-4 text-white">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
-        <div><Link to="/" className="font-semibold underline underline-offset-4">Unicornio</Link><span className="mx-2" aria-hidden="true">/</span><span>Producción</span></div>
-        <nav className="flex flex-wrap gap-4 text-sm"><Link to="/produccion/base" className="underline">YogurtBase</Link><Link to="/produccion/abastecimiento-sucursales" className="underline">Abastecimiento sucursales</Link></nav>
-      </div>
-    </header>
-    <main className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6">
+  return <div className="space-y-5">
+    <section className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6">
       <section className="flex flex-col gap-4 rounded-xl bg-white p-5 shadow-sm sm:flex-row sm:items-end sm:justify-between">
         <div><h1 className="text-2xl font-bold">Producción</h1><p className="mt-1 text-sm text-slate-600">Pedidos vigentes agrupados por fecha de llegada del repartidor.</p></div>
         <div className="flex flex-wrap items-end gap-3">
           <label className="grid gap-1 text-sm font-medium">Fecha de levantamiento
             <input type="date" value={fecha ?? data?.fecha ?? ''} onChange={(event) => setFecha(event.currentTarget.value || undefined)} className="min-h-11 rounded-lg border border-slate-300 px-3" />
           </label>
-          <button type="button" onClick={yesterday} className="min-h-11 rounded-lg border border-indigo-300 px-4 font-semibold text-indigo-800">Ayer</button>
+          <button type="button" onClick={yesterday} className="min-h-11 rounded-lg border border-fuchsia-700 px-4 font-semibold text-fuchsia-800">Ayer</button>
         </div>
       </section>
 
@@ -62,6 +55,6 @@ export function ProduccionPage() {
           </section>
         </>}
       </>}
-    </main>
+    </section>
   </div>;
 }

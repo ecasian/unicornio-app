@@ -1,11 +1,11 @@
 import { clearCsrfToken } from './shared/api/request';
 
-export function withCsrfMock(apiFetch: unknown): typeof fetch {
+export function withCsrfMock(apiFetch: unknown, session?: Record<string, unknown>): typeof fetch {
   clearCsrfToken();
   const fetchMock = apiFetch as typeof fetch;
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     if (String(input) === '/api/auth/session') {
-      return new Response(JSON.stringify({
+      return new Response(JSON.stringify(session ?? {
         id: 1,
         email: 'test@example.invalid',
         nombre: 'Usuario de prueba',

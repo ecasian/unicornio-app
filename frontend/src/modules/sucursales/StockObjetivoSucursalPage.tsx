@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState, type MouseEvent } from 'react';
-import { Link } from 'react-router';
+import { useEffect, useState } from 'react';
 import type { TurnoInventario } from '../../shared/api/inventario-sucursales';
 import { sucursalesApi } from '../../shared/api/sucursales';
 import { stockObjetivoSucursalesApi } from '../../shared/api/stock-objetivo-sucursales';
@@ -54,16 +53,11 @@ export function StockObjetivoSucursalPage() {
     setNotice('');
   }
 
-  function guardNavigation(event: MouseEvent<HTMLAnchorElement>) {
-    if (dirty && !window.confirm('Hay cambios de objetivos sin guardar. ¿Salir sin guardarlos?')) event.preventDefault();
-  }
-
   const error = (branches.error || flavors.error || goals.error || comparison.error || save.error) as Error | null;
   const pending = branches.isPending || flavors.isPending || (Boolean(sucursalId) && goals.isPending);
   const inventoryLabel = comparison.data?.inventarioEstado === 'AUSENTE' ? 'Sin snapshot para esta fecha y turno' : comparison.data?.inventarioEstado === 'BORRADOR' ? 'Hay un borrador; la comparación usa solo snapshots confirmados' : 'Snapshot confirmado para la fecha y turno elegidos';
 
-  return <main className="min-h-screen bg-slate-50 text-slate-900">
-    <header className="bg-fuchsia-800 px-4 py-4 text-white"><div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2"><Link to="/" onClick={guardNavigation} className="font-semibold underline">Unicornio</Link><nav className="flex flex-wrap gap-4"><Link to="/sucursales" onClick={guardNavigation} className="underline">Concentrado</Link><Link to="/sucursales/propuesta-abastecimiento" onClick={guardNavigation} className="underline">Propuesta diaria</Link><Link to="/inventario-sucursales" onClick={guardNavigation} className="underline">Inventario por turno</Link><span>Objetivo de stock</span></nav></div></header>
+  return <section className="space-y-5">
     <div className="mx-auto max-w-5xl space-y-5 px-4 py-6">
       <section className="rounded-xl bg-white p-5 shadow-sm"><h1 className="text-2xl font-bold">Stock objetivo de sucursales</h1><p className="mt-1 text-slate-600">Objetivo base permanente en litros deseados tras abastecimiento. Fer y Jonathan pueden configurarlo; no calcula pedidos ni ajusta inventario.</p>
         <label className="mt-4 grid max-w-xl gap-1 text-sm">Sucursal<select value={sucursalId} onChange={(event) => changeBranch(event.currentTarget.value ? Number(event.currentTarget.value) : '')} className="min-h-11 rounded border px-3"><option value="">Seleccionar sucursal</option>{branches.data?.map((branch) => <option key={branch.id} value={branch.id}>{branch.nombre}{branch.activo ? '' : ' · inactiva'}</option>)}</select></label>
@@ -85,5 +79,5 @@ export function StockObjetivoSucursalPage() {
         {comparison.data && <><p role="status" className="mt-3 rounded bg-slate-50 p-3 text-sm">{comparison.data.sucursal.nombre} · {comparison.data.fecha} · {comparison.data.turno}. {inventoryLabel}.</p>{comparison.data.comparaciones.length ? <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[38rem] border-collapse text-left text-sm"><thead><tr className="border-b"><th className="p-2">Sabor</th><th className="p-2">Objetivo base</th><th className="p-2">Existencia</th><th className="p-2">Objetivo − existencia</th></tr></thead><tbody>{comparison.data.comparaciones.map((item) => <tr key={item.saborId} className="border-b"><th className="p-2 font-medium">{item.sabor}{item.saborActivo ? '' : ' · inactivo'}</th><td className="p-2">{item.objetivoConfigurado ? `${item.objetivoLitros} L` : 'Sin objetivo'}</td><td className="p-2">{item.existenciaRegistrada ? `${item.existenciaLitros} L` : 'Sin dato'}</td><td className="p-2">{item.diferenciaLitros === null ? 'No disponible' : `${item.diferenciaLitros} L`}</td></tr>)}</tbody></table></div> : <p className="mt-3 text-slate-600">No hay sabores ni datos configurados para comparar.</p>}</>}
       </section>
     </div>
-  </main>;
+  </section>;
 }

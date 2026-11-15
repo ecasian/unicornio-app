@@ -4,7 +4,6 @@ import { Link, useParams } from 'react-router';
 import { catalogoApi } from '../../shared/api/catalogo';
 import { clientesApi } from '../../shared/api/clientes';
 import { stockObjetivoApi, type StockObjetivo, type StockObjetivoItem } from '../../shared/api/stock-objetivo';
-import { AdminHeader } from '../../shared/components/AdminHeader';
 import { presentacionPermitidaParaCliente } from '../../shared/domain/presentaciones';
 
 type Opcion = { saborId: number; saborNombre: string; presentacionId: number; presentacionNombre: string };
@@ -61,7 +60,7 @@ function StockForm({ opciones, stock, busy, onSave }: {
   }
 
   return <form noValidate onSubmit={(event) => void submit(event)} className="space-y-5">
-    <p className="text-fuchsia-100">Desmarcado: fuera del surtido. Marcado con 0: incluido con stock objetivo cero.</p>
+    <p className="text-slate-600">Desmarcado: fuera del surtido. Marcado con 0: incluido con stock objetivo cero.</p>
     {remoteChanged && <div role="alert" className="rounded-xl bg-amber-100 p-4 text-amber-950"><p>La configuración cambió mientras editabas. Tus cambios siguen aquí; recarga los datos para continuar.</p><button type="button" onClick={reload} className="mt-3 min-h-11 rounded-full border border-amber-900 px-5 font-semibold">Recargar configuración</button></div>}
     {opciones.length === 0 ? <p className="rounded-2xl bg-white p-5 text-slate-700">No hay combinaciones habilitadas para este cliente.</p> :
       [...grupos.entries()].map(([saborId, items]) => <fieldset key={saborId} className="rounded-2xl bg-white p-5 text-slate-900 shadow-sm">
@@ -80,7 +79,7 @@ function StockForm({ opciones, stock, busy, onSave }: {
         })}</div>
       </fieldset>)}
     {error && <p role="alert" className="rounded-xl bg-red-100 p-4 text-red-900">{error}</p>}
-    <button type="submit" disabled={busy || remoteChanged} className="min-h-12 rounded-full bg-pink-500 px-6 font-bold text-white disabled:opacity-50">{busy ? 'Guardando…' : 'Guardar stock objetivo'}</button>
+    <button type="submit" disabled={busy || remoteChanged} className="min-h-12 rounded-lg bg-fuchsia-800 px-6 font-semibold text-white disabled:opacity-50">{busy ? 'Guardando…' : 'Guardar stock objetivo'}</button>
   </form>;
 }
 
@@ -109,9 +108,8 @@ export function StockObjetivoPage() {
   const loading = cliente.isPending || (cliente.isSuccess && (stock.isPending || (cliente.data.activo && !catalogReady)));
   const failure = (!cliente.data && cliente.error) || (!stock.data && stock.error) || (!sabores.data && sabores.error) || presentaciones.find((query) => !query.data && query.error)?.error;
 
-  return <main className="min-h-screen bg-gradient-to-b from-fuchsia-900 via-fuchsia-800 to-fuchsia-950 pb-16 text-white">
-    <AdminHeader current="Clientes" />
-    <div className="mx-auto max-w-5xl space-y-6 px-4 pt-8 sm:px-6">
+  return <section className="space-y-6">
+        <div className="mx-auto max-w-5xl space-y-6 px-4 pt-8 sm:px-6">
       <Link to="/admin/clientes" className="inline-flex min-h-11 items-center underline underline-offset-4">← Volver a Clientes</Link>
       <h1 className="text-3xl font-bold">Configurar stock{cliente.data ? ` · ${cliente.data.nombre}` : ''}</h1>
       {feedback && <p role="status" className="rounded-xl bg-emerald-100 p-4 text-emerald-900">{feedback}</p>}
@@ -120,5 +118,5 @@ export function StockObjetivoPage() {
         <StockForm key={clienteId} opciones={opciones} stock={stock.data ?? []} busy={guardar.isPending} onSave={(items) => guardar.mutateAsync(items).then(() => undefined)} />
       </>}
     </div>
-  </main>;
+  </section>;
 }

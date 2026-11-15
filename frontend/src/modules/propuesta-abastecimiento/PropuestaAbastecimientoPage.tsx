@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState, type MouseEvent } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import { sucursalesApi } from '../../shared/api/sucursales';
 import { propuestasAbastecimientoApi, type PropuestaAbastecimiento } from '../../shared/api/propuestas-abastecimiento';
 
@@ -44,15 +44,13 @@ export function PropuestaAbastecimientoPage() {
   const confirm = useMutation({ mutationFn: () => propuestasAbastecimientoApi.confirm(current!.id), onSuccess: async (result) => { await refresh(result); setNotice('Propuesta confirmada e inmutable.'); }, onError: () => { void detail.refetch(); } });
   const error = (branches.error || list.error || detail.error || create.error || save.error || recalculate.error || confirm.error) as Error | null;
 
-  function guard(event: MouseEvent<HTMLAnchorElement>) { if (dirty && !window.confirm('Hay decisiones sin guardar. ¿Salir sin guardarlas?')) event.preventDefault(); }
   function pickProposal(item: PropuestaAbastecimiento) {
     if (dirty && !window.confirm('Hay decisiones sin guardar. ¿Descartarlas?')) return;
     setIgnoreLinkedProposal(true);
     setPropuesta(item); setDecisiones(Object.fromEntries(item.detalles.map((detail) => [detail.saborId, detail.decisionLitros ?? '']))); setDirty(false); setNotice('');
   }
 
-  return <main className="min-h-screen bg-slate-50 text-slate-900">
-    <header className="bg-fuchsia-800 px-4 py-4 text-white"><div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3"><Link to="/" onClick={guard} className="font-semibold underline">Unicornio</Link><nav className="flex flex-wrap gap-4"><Link to="/sucursales" onClick={guard} className="underline">Concentrado</Link><Link to="/inventario-sucursales" onClick={guard} className="underline">Inventario por turno</Link><span>Propuesta diaria</span></nav></div></header>
+  return <section className="space-y-5">
     <div className="mx-auto max-w-6xl space-y-5 px-4 py-6">
       <section className="rounded-xl bg-white p-5 shadow-sm"><h1 className="text-2xl font-bold">Propuesta de abastecimiento diario</h1><p className="mt-1 text-slate-600">La referencia es el inventario vespertino confirmado del día anterior y el objetivo base. Esta propuesta no crea pedidos ni modifica inventarios.</p>
         <div className="mt-4 grid gap-3 sm:grid-cols-3"><label className="grid gap-1 text-sm">Fecha de abastecimiento<input type="date" value={fecha} onChange={(event) => { if (dirty && !window.confirm('Descartar decisiones sin guardar?')) return; setIgnoreLinkedProposal(true); setFecha(event.currentTarget.value); setPropuesta(null); setSucursalId(''); setDirty(false); setNotice(''); }} className="min-h-11 rounded border px-3" /></label><label className="grid gap-1 text-sm">Sucursal<select value={selectedBranchId} onChange={(event) => { if (dirty && !window.confirm('Descartar decisiones sin guardar?')) return; setIgnoreLinkedProposal(true); setSucursalId(event.currentTarget.value ? Number(event.currentTarget.value) : ''); setPropuesta(null); setDirty(false); setNotice(''); }} className="min-h-11 rounded border px-3"><option value="">Seleccionar sucursal</option>{branches.data?.map((branch) => <option key={branch.id} value={branch.id}>{branch.nombre}{branch.activo ? '' : ' · inactiva'}</option>)}</select></label><button type="button" disabled={!fecha || !selectedBranchId || list.isPending || draftExists || create.isPending || !branches.data?.find((item) => item.id === selectedBranchId)?.activo} onClick={() => create.mutate()} className="min-h-11 self-end rounded bg-fuchsia-800 px-4 font-semibold text-white disabled:opacity-50">{create.isPending ? 'Preparando…' : 'Crear / nueva versión'}</button></div>
@@ -75,5 +73,5 @@ export function PropuestaAbastecimientoPage() {
         </div>
       </section>}
     </div>
-  </main>;
+  </section>;
 }

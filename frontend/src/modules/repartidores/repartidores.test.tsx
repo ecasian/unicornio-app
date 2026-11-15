@@ -102,12 +102,12 @@ describe('RepartidoresPage', () => {
     expect(container.textContent).toContain('Todavía no hay repartidores');
   });
 
-  it('renders the fetched list and disabled Sucursales button', async () => {
+  it('renders the fetched list without duplicating app navigation', async () => {
     rows = [initial];
     await renderPage();
     expect(container.textContent).toContain('María López');
     expect(container.textContent).toContain('Activo');
-    expect(button('Sucursales · Próximamente').disabled).toBe(true);
+    expect(container.querySelector('nav[aria-label="Navegación de Administrador"]')).toBeNull();
     expect(listCalls).toBe(1);
   });
 

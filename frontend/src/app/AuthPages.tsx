@@ -245,12 +245,34 @@ export function LoginPage() {
 export function HomePage() {
   const user = useOutletContext<AuthUser>();
   const permittedItems = navItems.filter((item) => user.permissions.includes(item.permission));
+  const guidedFlows = [
+    user.permissions.includes('reparto:operate') && {
+      title: 'Registrar existencias', to: '/repartidor',
+      description: 'Registra la llegada, captura cantidades físicas por sabor y confirma el levantamiento de una tienda.',
+    },
+    (user.permissions.includes('inventario-sucursales:manage') || user.permissions.includes('inventario-sucursales:read') || user.permissions.includes('abastecimiento:manage')) && {
+      title: 'Revisar inventario y preparar abastecimiento',
+      to: user.permissions.includes('abastecimiento:manage') ? '/sucursales/propuesta-abastecimiento'
+        : user.permissions.includes('inventario-sucursales:manage') ? '/inventario-sucursales' : '/inventario-sucursales/consulta',
+      description: 'Consulta snapshots confirmados por turno y, si tu perfil lo permite, prepara una propuesta diaria.',
+    },
+    user.permissions.includes('produccion:read') && {
+      title: 'Consultar producción', to: '/produccion',
+      description: 'Revisa los pedidos vigentes derivados de levantamientos confirmados; esta consulta no registra entregas físicas.',
+    },
+  ].filter((item): item is { title: string; to: string; description: string } => Boolean(item));
   return <section className="space-y-6">
     <header>
       <p className="text-sm font-semibold uppercase tracking-wide text-slate-600">{user.nombre}</p>
       <h1 className="mt-1 text-2xl font-semibold">Inicio</h1>
       <p className="mt-2 text-slate-600">Estos son los procesos disponibles para tu cuenta.</p>
     </header>
+    {guidedFlows.length > 0 && <section aria-labelledby="guided-flows-heading" className="space-y-3">
+      <div><h2 id="guided-flows-heading" className="text-xl font-semibold">Recorridos guiados</h2><p className="mt-1 text-sm text-slate-600">Elige un proceso para continuar desde su primer paso.</p></div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{guidedFlows.map((flow) => <Link key={flow.title} to={flow.to} className="rounded-xl border border-fuchsia-200 bg-white p-5 shadow-sm hover:border-fuchsia-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-700">
+        <span className="block text-lg font-semibold text-slate-900">{flow.title}</span><span className="mt-2 block text-sm text-slate-600">{flow.description}</span><span className="mt-3 block text-sm font-semibold text-fuchsia-800">Comenzar recorrido →</span>
+      </Link>)}</div>
+    </section>}
     {permittedItems.length === 0 ? <p className="rounded-xl border bg-white p-5 text-slate-700">Tu cuenta no tiene procesos asignados. Consulta con una persona administradora.</p> : <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {permittedItems.map((item) => <Link key={item.to} to={item.to} className="group rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-fuchsia-300 hover:shadow focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-700">
         <span className="text-xs font-semibold uppercase tracking-wide text-fuchsia-800">{item.group}</span>

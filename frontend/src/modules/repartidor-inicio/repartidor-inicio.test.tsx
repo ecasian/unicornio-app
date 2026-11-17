@@ -453,6 +453,7 @@ describe('inicio de Repartidor', () => {
     expect(container.querySelectorAll('input[type="number"]')).toHaveLength(0);
     const homeLink = linksToHome().find((link) => link.textContent?.trim() === 'Volver al inicio');
     expect(homeLink).toBeTruthy();
+    expect([...container.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'Elegir otra tienda')).toBe(true);
     const postCount = fetchMock.mock.calls.filter(([url, init]) => String(url).includes('/registros-existencias') && init?.method === 'POST').length;
     await act(async () => homeLink?.click());
     await flush();
@@ -460,6 +461,18 @@ describe('inicio de Repartidor', () => {
     expect(container.textContent).toContain('Admin Demo');
     expect(fetchMock.mock.calls.filter(([url, init]) => String(url).includes('/registros-existencias') && init?.method === 'POST')).toHaveLength(postCount);
     expect(fetchMock.mock.calls.some(([url, init]) => String(url).includes('/auth/logout') && init?.method === 'POST')).toBe(false);
+  });
+
+  it('lets the courier choose another store after a confirmed record without resubmitting', async () => {
+    await openCapture();
+    await enter('Fresa · 1 litro', '0');
+    await enter('Fresa · 1/2 litro', '0');
+    await save('Guardar existencias');
+    const before = fetchMock.mock.calls.filter(([url, init]) => String(url).includes('/registros-existencias') && init?.method === 'POST').length;
+    await click('Elegir otra tienda');
+    expect(container.textContent).toContain('Selecciona el cliente');
+    expect(container.textContent).toContain('Repartidor:');
+    expect(fetchMock.mock.calls.filter(([url, init]) => String(url).includes('/registros-existencias') && init?.method === 'POST')).toHaveLength(before);
   });
 
   it('permite revisar y volver a editar antes de confirmar el registro', async () => {

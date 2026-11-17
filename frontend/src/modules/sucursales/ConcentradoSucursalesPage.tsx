@@ -1,11 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Link, useLocation, useSearchParams } from 'react-router';
 import { sucursalesApi, type NecesidadDetalle } from '../../shared/api/sucursales';
+
+function formatOperationalDate(value: string) {
+  const [year, month, day] = value.split('-');
+  return `${day}/${month}/${year}`;
+}
 
 export function ConcentradoSucursalesPage() {
   const client = useQueryClient();
-  const [fecha, setFecha] = useState('');
-  const [sucursalId, setSucursalId] = useState<number | ''>('');
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const fecha = searchParams.get('fecha') ?? '';
+  const [sucursalId, setSucursalId] = useState<number | ''>(() => {
+    const id = Number(searchParams.get('sucursalId'));
+    return Number.isInteger(id) && id > 0 ? id : '';
+  });
   const [nuevoNombre, setNuevoNombre] = useState('');
   const [items, setItems] = useState<NecesidadDetalle[]>([]);
   const [saborId, setSaborId] = useState<number | ''>('');
@@ -17,13 +28,38 @@ export function ConcentradoSucursalesPage() {
   const reportKey = fecha || 'business-today';
   const report = useQuery({ queryKey: ['concentrado-sucursales', reportKey], queryFn: () => sucursalesApi.report(fecha || undefined) });
   const fechaOperativa = fecha || report.data?.fecha || '';
+  function setOperationalDate(value: string) {
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set('fecha', value);
+    else next.delete('fecha');
+    setSearchParams(next, { replace: true });
+  }
+  function setSelectedBranch(value: number | '') {
+    setSucursalId(value);
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set('sucursalId', String(value));
+    else next.delete('sucursalId');
+    setSearchParams(next, { replace: true });
+  }
   const reload = () => { void client.invalidateQueries({ queryKey: ['sucursales'] }); void client.invalidateQueries({ queryKey: ['concentrado-sucursales'] }); };
   const create = useMutation({ mutationFn: sucursalesApi.create, onSuccess: () => { setNuevoNombre(''); reload(); } });
   const save = useMutation({ mutationFn: () => sucursalesApi.save(Number(sucursalId), fechaOperativa, items), onSuccess: () => { setNotice('Borrador guardado. Revísalo antes de confirmar.'); reload(); } });
-  const confirm = useMutation({ mutationFn: () => sucursalesApi.confirm(Number(sucursalId), fechaOperativa), onSuccess: () => { setNotice('Necesidad confirmada para el concentrado.'); setItems([]); reload(); } });
+  const confirm = useMutation({ mutationFn: () => sucursalesApi.confirm(Number(sucursalId), fechaOperativa), onSuccess: () => { if (fechaOperativa) setOperationalDate(fechaOperativa); setNotice('Reporte confirmado.'); setItems([]); reload(); } });
   const selected = sucursales.data?.find((item) => item.id === sucursalId);
-  const confirmed = report.data?.sucursales.some((item) => item.sucursalId === sucursalId);
+  const confirmedReport = report.data?.sucursales.find((item) => item.sucursalId === sucursalId);
+  const confirmed = Boolean(confirmedReport);
   const error = [sucursales.error, sabores.error, report.error, create.error, save.error, confirm.error].find(Boolean);
+  const confirmedDetailSearch = new URLSearchParams(searchParams);
+  if (report.data?.fecha) confirmedDetailSearch.set('fecha', report.data.fecha);
+  if (selected) confirmedDetailSearch.set('sucursalId', String(selected.id));
+
+  useEffect(() => {
+    if (!report.isSuccess || !location.hash.startsWith('#reporte-sucursal-')) return;
+    const target = document.getElementById(location.hash.slice(1));
+    if (!target) return;
+    target.scrollIntoView?.({ block: 'start' });
+    target.focus({ preventScroll: true });
+  }, [location.hash, report.data, report.isSuccess]);
   function addItem() {
     if (!saborId) return;
     if (items.some((item) => item.saborId === saborId && item.capacidadLitros === capacidad)) { setNotice('Esa combinación ya está en la lista.'); return; }
@@ -33,7 +69,7 @@ export function ConcentradoSucursalesPage() {
 
   return <section className="space-y-5">
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-6">
-      <section className="rounded-xl bg-white p-5 shadow-sm"><h1 className="text-2xl font-bold">Concentrado de necesidades</h1><p className="mt-1 text-slate-600">Registra necesidades declaradas por sucursal. No representa inventario físico ni producción fabricada.</p><div className="mt-4 flex flex-wrap items-end gap-3"><label className="grid gap-1 text-sm">Fecha operativa<input type="date" value={fechaOperativa} onChange={(e) => { setFecha(e.currentTarget.value); setItems([]); setNotice(''); }} className="min-h-11 rounded border px-3" /></label><label className="grid gap-1 text-sm">Sucursal<select value={sucursalId} onChange={(e) => { setSucursalId(e.currentTarget.value ? Number(e.currentTarget.value) : ''); setItems([]); setNotice(''); }} className="min-h-11 min-w-52 rounded border px-3"><option value="">Seleccionar</option>{sucursales.data?.filter((item) => item.activo).map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></label></div></section>
+      <section className="rounded-xl bg-white p-5 shadow-sm"><h1 className="text-2xl font-bold">Concentrado de necesidades</h1><p className="mt-1 text-slate-600">Registra necesidades declaradas por sucursal. No representa inventario físico ni producción fabricada.</p><div className="mt-4 flex flex-wrap items-end gap-3"><label className="grid gap-1 text-sm">Fecha operativa<input type="date" value={fechaOperativa} onChange={(e) => { setOperationalDate(e.currentTarget.value); setItems([]); setNotice(''); }} className="min-h-11 rounded border px-3" /></label><label className="grid gap-1 text-sm">Sucursal<select value={sucursalId} onChange={(e) => { setSelectedBranch(e.currentTarget.value ? Number(e.currentTarget.value) : ''); setItems([]); setNotice(''); }} className="min-h-11 min-w-52 rounded border px-3"><option value="">Seleccionar</option>{sucursales.data?.filter((item) => item.activo).map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></label></div></section>
       {(sucursales.isPending || sabores.isPending || report.isPending) && <p role="status" className="rounded bg-white p-4">Cargando concentrado…</p>}
       {error && <p role="alert" className="rounded bg-red-100 p-4 text-red-900">{(error as Error).message}</p>}{notice && <p role="status" className="rounded bg-emerald-100 p-4 text-emerald-900">{notice}</p>}
       <section className="rounded-xl bg-white p-5 shadow-sm"><h2 className="text-lg font-bold">Catálogo de sucursales</h2><p className="text-sm text-slate-600">El catálogo inicia vacío para no inventar nombres.</p><form className="mt-3 flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); if (nuevoNombre.trim()) create.mutate(nuevoNombre.trim()); }}><input aria-label="Nombre de sucursal" value={nuevoNombre} onChange={(e) => setNuevoNombre(e.currentTarget.value)} className="min-h-11 rounded border px-3" placeholder="Nombre confirmado por el negocio" /><button className="min-h-11 rounded bg-fuchsia-800 px-4 font-semibold text-white">Agregar sucursal</button></form><ul className="mt-3 flex flex-wrap gap-2">{sucursales.data?.map((item) => <li key={item.id} className="rounded-full bg-slate-100 px-3 py-2">{item.nombre} · {item.activo ? 'Activa' : 'Inactiva'}{item.activo && <button type="button" onClick={() => sucursalesApi.update(item.id, { activo: false }).then(reload)} className="ml-2 underline">Desactivar</button>}</li>)}</ul></section>
@@ -41,8 +77,8 @@ export function ConcentradoSucursalesPage() {
         {items.length > 0 && <ul className="mt-4 divide-y">{items.map((item) => <li key={`${item.saborId}:${item.capacidadLitros}`} className="flex items-center justify-between py-2"><span>{sabores.data?.find((s) => s.id === item.saborId)?.nombre} · {item.capacidadLitros} L</span><span>{item.cantidad} cubetas · {item.cantidad * item.capacidadLitros} L <button type="button" onClick={() => setItems((current) => current.filter((candidate) => candidate !== item))} className="ml-2 underline">Quitar</button></span></li>)}</ul>}
         <div className="mt-4 flex flex-wrap gap-3"><button type="button" disabled={!fechaOperativa || !items.length || save.isPending} onClick={() => save.mutate()} className="min-h-11 rounded bg-fuchsia-800 px-5 font-semibold text-white disabled:opacity-50">Guardar borrador</button><button type="button" disabled={!fechaOperativa || !items.length || save.isPending || confirm.isPending} onClick={async () => { await save.mutateAsync(); confirm.mutate(); }} className="min-h-11 rounded bg-emerald-700 px-5 font-semibold text-white disabled:opacity-50">Guardar y confirmar</button></div>
       </section>}
-      {selected && confirmed && <section className="rounded-xl bg-emerald-50 p-5 text-emerald-900"><h2 className="text-xl font-bold">Reporte confirmado</h2><p>Este reporte queda cerrado para {selected.nombre} en {fecha}.</p></section>}
-      {report.data && <><section className="rounded-xl bg-white p-5 shadow-sm"><h2 className="text-xl font-bold">Pendientes de confirmar</h2>{report.data.sucursalesSinConfirmar.length ? <ul className="mt-3 list-inside list-disc">{report.data.sucursalesSinConfirmar.map((item) => <li key={item.id}>{item.nombre}{!item.activo ? ' (inactiva)' : ''}</li>)}</ul> : <p className="mt-2">Todas las sucursales registradas tienen reporte confirmado.</p>}</section><section className="rounded-xl bg-white p-5 shadow-sm"><h2 className="text-xl font-bold">Detalle por sucursal</h2>{report.data.sucursales.length ? report.data.sucursales.map((item) => <article key={item.sucursalId} className="mt-4 border-t pt-3"><h3 className="font-semibold">{item.sucursal}</h3><ul>{item.detalles.map((detail) => <li key={`${detail.saborId}:${detail.capacidadLitros}`}>{detail.sabor} · {detail.capacidadLitros} L: {detail.cantidad} cubetas ({detail.litrosEquivalentes} L)</li>)}</ul></article>) : <p className="mt-2 text-slate-600">Aún no hay reportes confirmados para esta fecha.</p>}</section><section className="rounded-xl bg-white p-5 shadow-sm"><h2 className="text-xl font-bold">Consolidado general</h2>{report.data.consolidado.length ? <ul className="mt-3 divide-y">{report.data.consolidado.map((item) => <li key={`${item.saborId}:${item.capacidadLitros}`} className="flex justify-between py-2"><span>{item.sabor} · {item.capacidadLitros} L</span><strong>{item.cantidad} cubetas · {item.litrosEquivalentes} L</strong></li>)}</ul> : <p className="mt-2 text-slate-600">No hay necesidades confirmadas.</p>}</section></>}
+      {selected && confirmed && confirmedReport && report.data?.fecha && <section className="rounded-xl bg-emerald-50 p-5 text-emerald-900"><h2 className="text-xl font-bold">Reporte confirmado</h2><p>El reporte de {selected.nombre} quedó confirmado para la fecha operativa del {formatOperationalDate(report.data.fecha)}.</p><Link to={{ search: `?${confirmedDetailSearch.toString()}`, hash: `#reporte-sucursal-${selected.id}` }} className="mt-4 inline-flex min-h-11 items-center rounded-lg bg-fuchsia-800 px-5 font-semibold text-white hover:bg-fuchsia-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-800">Ver detalle del reporte</Link></section>}
+      {report.data && <><section className="rounded-xl bg-white p-5 shadow-sm"><h2 className="text-xl font-bold">Pendientes de confirmar</h2>{report.data.sucursalesSinConfirmar.length ? <ul className="mt-3 list-inside list-disc">{report.data.sucursalesSinConfirmar.map((item) => <li key={item.id}>{item.nombre}{!item.activo ? ' (inactiva)' : ''}</li>)}</ul> : <p className="mt-2">Todas las sucursales registradas tienen reporte confirmado.</p>}</section><section className="rounded-xl bg-white p-5 shadow-sm"><h2 className="text-xl font-bold">Detalle por sucursal</h2>{report.data.sucursales.length ? report.data.sucursales.map((item) => <article id={`reporte-sucursal-${item.sucursalId}`} key={item.sucursalId} tabIndex={-1} className="mt-4 scroll-mt-24 border-t pt-3"><h3 className="font-semibold">{item.sucursal}</h3><ul>{item.detalles.map((detail) => <li key={`${detail.saborId}:${detail.capacidadLitros}`}>{detail.sabor} · {detail.capacidadLitros} L: {detail.cantidad} cubetas ({detail.litrosEquivalentes} L)</li>)}</ul></article>) : <p className="mt-2 text-slate-600">Aún no hay reportes confirmados para esta fecha.</p>}</section><section className="rounded-xl bg-white p-5 shadow-sm"><h2 className="text-xl font-bold">Consolidado general</h2>{report.data.consolidado.length ? <ul className="mt-3 divide-y">{report.data.consolidado.map((item) => <li key={`${item.saborId}:${item.capacidadLitros}`} className="flex justify-between py-2"><span>{item.sabor} · {item.capacidadLitros} L</span><strong>{item.cantidad} cubetas · {item.litrosEquivalentes} L</strong></li>)}</ul> : <p className="mt-2 text-slate-600">No hay necesidades confirmadas.</p>}</section></>}
     </div>
   </section>;
 }

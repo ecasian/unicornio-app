@@ -81,7 +81,19 @@ describe('Inventario por turno de sucursales UX', () => {
     expect(confirmAfterSave.disabled).toBe(false);
     await act(async () => confirmAfterSave.click()); await flush(); await flush();
     expect(container.textContent).toContain('Confirmado · inmutable');
+    expect(container.textContent).toContain('Inventario confirmado y conservado en el historial.');
+    expect(container.querySelector('a[href*="/inventario-sucursales/consulta?fecha=2026-11-06&turno=MATUTINO&sucursalId=1#inventario-sucursal-1"]')?.textContent).toContain('Consultar este inventario');
     expect((container.querySelector('input[type="number"]') as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it('opens the selected branch inventory with the same date and shift after reload', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/inventario-sucursales/consulta?fecha=2026-11-06&turno=MATUTINO&sucursalId=1#inventario-sucursal-1']}><ConsultaInventarioPage /></MemoryRouter></QueryClientProvider>));
+    await flush(); await flush();
+    expect((container.querySelector('input[type="date"]') as HTMLInputElement).value).toBe('2026-11-06');
+    expect((container.querySelector('select') as HTMLSelectElement).value).toBe('MATUTINO');
+    expect(calls.some((call) => call.url.includes('fecha=2026-11-06') && call.url.includes('turno=MATUTINO'))).toBe(true);
+    expect(document.activeElement).toBe(container.querySelector('#inventario-sucursal-1'));
   });
 
   it('shows pending branches and confirmed totals without assigning zero to absent flavors', async () => {

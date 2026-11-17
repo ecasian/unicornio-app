@@ -242,6 +242,7 @@ export function RepartidorInicioPage() {
                   </div>
                 ) : <div className="mt-4 font-bold">{correccionGuardada && pedidoAnterior && <p>El pedido anterior fue sustituido.</p>}<p>Este cliente no requiere producción.</p></div>}
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  <button type="button" onClick={cambiarCliente} className="min-h-12 rounded-full border border-fuchsia-800 bg-white px-6 font-bold text-fuchsia-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-800">Elegir otra tienda</button>
                   <Link to="/" className="inline-flex min-h-12 items-center justify-center rounded-full bg-fuchsia-700 px-6 text-center font-bold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-800">Volver al inicio</Link>
                   {registro.vigente !== false && <button type="button" onClick={() => { setCorrigiendo(true); corregir.reset(); void stock.refetch(); }}
                     className="min-h-12 rounded-full border border-fuchsia-800 bg-white px-6 font-bold text-fuchsia-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-800">Corregir existencias</button>}

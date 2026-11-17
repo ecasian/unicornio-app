@@ -24,20 +24,28 @@ export function ClientesPage() {
   const queryClient = useQueryClient();
   const [editor, setEditor] = useState<Editor>(null);
   const [feedback, setFeedback] = useState('');
+  const [createdClient, setCreatedClient] = useState<Cliente | null>(null);
   const [toggleError, setToggleError] = useState('');
   const clientes = useQuery({ queryKey: ['clientes'], queryFn: clientesApi.list });
   const create = useMutation({ mutationFn: clientesApi.create, onSuccess: () => queryClient.invalidateQueries({ queryKey: ['clientes'] }) });
   const update = useMutation({ mutationFn: ({ id, data }: { id: number; data: ClienteUpdate }) => clientesApi.update(id, data), onSuccess: () => queryClient.invalidateQueries({ queryKey: ['clientes'] }) });
 
   async function save(data: ClienteInput) {
-    if (editor?.kind === 'edit') await update.mutateAsync({ id: editor.cliente.id, data });
-    else await create.mutateAsync(data);
-    setFeedback(editor?.kind === 'edit' ? 'Cliente actualizado.' : 'Cliente creado.');
+    if (editor?.kind === 'edit') {
+      await update.mutateAsync({ id: editor.cliente.id, data });
+      setCreatedClient(null);
+      setFeedback('Tienda actualizada.');
+    } else {
+      const created = await create.mutateAsync(data);
+      setCreatedClient(created);
+      setFeedback('Tienda creada.');
+    }
     setEditor(null);
   }
 
   async function toggle(cliente: Cliente) {
     setToggleError('');
+    setCreatedClient(null);
     try {
       await update.mutateAsync({ id: cliente.id, data: { activo: !cliente.activo } });
       setFeedback(cliente.activo ? 'Cliente desactivado.' : 'Cliente activado.');
@@ -47,11 +55,11 @@ export function ClientesPage() {
   }
 
   return <section className="space-y-6">
-        <div className="mx-auto max-w-5xl space-y-6 px-4 pt-8 sm:px-6"><div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-sm font-semibold uppercase tracking-widest text-fuchsia-800">Administrador</p><h1 className="text-3xl font-bold">Clientes</h1></div><button onClick={() => { setEditor({ kind: 'create' }); setFeedback(''); }} className="min-h-12 rounded-full bg-fuchsia-800 px-6 font-bold text-white">Nuevo cliente</button></div>
-      {feedback && <p role="status" className="rounded-xl bg-emerald-100 p-4 text-emerald-900">{feedback}</p>}
+        <div className="mx-auto max-w-5xl space-y-6 px-4 pt-8 sm:px-6"><div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-sm font-semibold uppercase tracking-widest text-fuchsia-800">Administrador</p><h1 className="text-3xl font-bold">Tiendas externas</h1><p className="mt-1 text-sm text-slate-600">Crea o actualiza una tienda externa. Una tienda se configura con stock objetivo después del alta.</p></div><button onClick={() => { setEditor({ kind: 'create' }); setFeedback(''); setCreatedClient(null); }} className="min-h-12 rounded-full bg-fuchsia-800 px-6 font-bold text-white">Nueva tienda</button></div>
+      {feedback && <div role="status" className="rounded-xl bg-emerald-100 p-4 text-emerald-900"><p>{feedback}</p>{createdClient && createdClient.activo && <Link to={`/admin/clientes/${createdClient.id}/stock-objetivo`} className="mt-3 inline-flex min-h-11 items-center rounded bg-fuchsia-800 px-4 font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-800">Configurar stock objetivo de {createdClient.nombre}</Link>}</div>}
       {toggleError && <p role="alert" className="rounded-xl bg-red-100 p-4 text-red-900">{toggleError}</p>}
       {editor && <ClienteForm key={editor.kind === 'edit' ? editor.cliente.id : 'new'} cliente={editor.kind === 'edit' ? editor.cliente : undefined} busy={create.isPending || update.isPending} onCancel={() => setEditor(null)} onSave={save} />}
-      {clientes.isPending ? <p role="status">Cargando clientes…</p> : clientes.isError ? <div role="alert" className="rounded-2xl bg-white p-5 text-red-800"><p>No se pudieron cargar los clientes: {clientes.error.message}</p><button onClick={() => void clientes.refetch()} className="mt-3 min-h-11 rounded-full bg-fuchsia-700 px-5 text-white">Reintentar</button></div> : <ClientesList clientes={clientes.data} onEdit={(cliente) => { setEditor({ kind: 'edit', cliente }); setFeedback(''); }} onToggle={(cliente) => void toggle(cliente)} busyId={update.isPending ? update.variables?.id : undefined} />}
+      {clientes.isPending ? <p role="status">Cargando tiendas…</p> : clientes.isError ? <div role="alert" className="rounded-2xl bg-white p-5 text-red-800"><p>No se pudieron cargar las tiendas: {clientes.error.message}</p><button onClick={() => void clientes.refetch()} className="mt-3 min-h-11 rounded-full bg-fuchsia-700 px-5 text-white">Reintentar</button></div> : <ClientesList clientes={clientes.data} onEdit={(cliente) => { setEditor({ kind: 'edit', cliente }); setFeedback(''); setCreatedClient(null); }} onToggle={(cliente) => void toggle(cliente)} busyId={update.isPending ? update.variables?.id : undefined} />}
     </div>
   </section>;
 }

@@ -2,11 +2,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Outlet, Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { withCsrfMock } from '../../test-utils';
 import { PropuestaAbastecimientoPage } from './PropuestaAbastecimientoPage';
 import type { PropuestaAbastecimiento } from '../../shared/api/propuestas-abastecimiento';
+import type { AuthUser } from '../../shared/api/auth';
 
 let container: HTMLDivElement;
 let root: Root;
@@ -15,6 +16,13 @@ let proposal: PropuestaAbastecimiento;
 let created: boolean;
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
 const flush = async () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+const proposalUser: AuthUser = { id: 1, email: 'demo@example.invalid', nombre: 'Demo', roles: ['ADMIN_GENERAL'], permissions: ['abastecimiento:manage', 'abastecimiento:read'], repartidorId: null };
+
+async function renderProposal(initialEntry = '/') {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[initialEntry]}><Routes><Route element={<Outlet context={proposalUser} />}><Route path="*" element={<PropuestaAbastecimientoPage />} /></Route></Routes></MemoryRouter></QueryClientProvider>));
+  await flush(); await flush();
+}
 function setValue(input: HTMLInputElement | HTMLSelectElement, value: string) {
   const prototype = input instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLSelectElement.prototype;
   Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(input, value);
@@ -51,18 +59,14 @@ afterEach(async () => { await act(async () => root.unmount()); container.remove(
 describe('Propuesta diaria UX', () => {
   it('opens a proposal selected from the consolidated summary link', async () => {
     created = true;
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-    await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/sucursales/propuesta-abastecimiento?fecha=2026-11-09&propuestaId=8']}><PropuestaAbastecimientoPage /></MemoryRouter></QueryClientProvider>));
-    await flush(); await flush();
+    await renderProposal('/sucursales/propuesta-abastecimiento?fecha=2026-11-09&propuestaId=8');
     expect((container.querySelector('input[type="date"]') as HTMLInputElement).value).toBe('2026-11-09');
     expect(container.textContent).toContain('Centro · 2026-11-09 · versión 1');
     expect(calls.some((call) => call.url.endsWith('/propuestas-abastecimiento/8'))).toBe(true);
   });
 
   it('shows source and SIN DATOS, saves an explicit manual amount, and confirms without creating an order', async () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-    await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter><PropuestaAbastecimientoPage /></MemoryRouter></QueryClientProvider>));
-    await flush();
+    await renderProposal();
     await act(async () => setValue(container.querySelector('input[type="date"]') as HTMLInputElement, '2026-11-09')); await flush();
     expect(container.textContent).toContain('Aún no hay propuestas para esta fecha.');
     await act(async () => setValue(container.querySelector('select') as HTMLSelectElement, '1'));
@@ -92,13 +96,15 @@ describe('Propuesta diaria UX', () => {
     expect(activeProposal.querySelectorAll('[role="status"]')).toHaveLength(1);
     expect(activeProposal.querySelector('[role="status"]')?.textContent).toBe('Propuesta confirmada e inmutable.');
     expect(container.textContent).toContain('Estado: CONFIRMADA');
+    expect(container.querySelector('a[href="/produccion/abastecimiento-sucursales?fecha=2026-11-09"]')?.textContent).toContain('Ver abastecimiento aprobado de esta fecha');
+    expect(container.querySelector('a[href="/"]')?.textContent).toContain('Volver al inicio');
     expect(calls.some((call) => /pedidos|inventario-sucursales|concentrado/.test(call.url))).toBe(false);
   });
 
   it('shows loading and API error states', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
     vi.stubGlobal('fetch', vi.fn(async () => json({ message: 'API no disponible' }, 503)));
-    await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter><PropuestaAbastecimientoPage /></MemoryRouter></QueryClientProvider>));
+    await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter><Routes><Route element={<Outlet context={proposalUser} />}><Route path="*" element={<PropuestaAbastecimientoPage />} /></Route></Routes></MemoryRouter></QueryClientProvider>));
     expect(container.textContent).toContain('Cargando sucursales');
     await flush(); await flush();
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('API no disponible');

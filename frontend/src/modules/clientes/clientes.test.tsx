@@ -123,7 +123,7 @@ describe('ClientesPage', () => {
 
   it('opens, fills and submits the creation form, then refetches the list', async () => {
     await renderPage();
-    await click('Nuevo cliente');
+    await click('Nueva tienda');
     expect(container.textContent).toContain('Nuevo cliente');
     expect(document.activeElement).toBe(input('Nombre'));
     await fill('Nombre', 'Punto Fresco');
@@ -137,7 +137,8 @@ describe('ClientesPage', () => {
       nombre: 'Punto Fresco', celular: '3121234567', direccion: 'Av. Ejemplo 123', manejaMedioLitro: true,
     });
     expect(listCalls).toBe(2);
-    expect(container.textContent).toContain('Cliente creado.');
+    expect(container.textContent).toContain('Tienda creada.');
+    expect(container.querySelector('a[href="/admin/clientes/1/stock-objetivo"]')?.textContent).toContain('Configurar stock objetivo de Punto Fresco');
     expect(container.textContent).toContain('Punto Fresco');
     expect(container.textContent).toContain('1/2 litroSí');
   });

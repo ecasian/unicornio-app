@@ -77,7 +77,25 @@ describe('rutas autenticadas', () => {
     await renderRoute('/');
     expect(container.textContent).toContain('Fer');
     expect(container.textContent).toContain('Estos son los procesos disponibles para tu cuenta.');
-    expect(container.querySelectorAll('a[href="/inventario-sucursales"]')).toHaveLength(2);
+    expect(container.querySelectorAll('a[href="/inventario-sucursales"]')).toHaveLength(3);
+  });
+
+  it('muestra recorridos guiados solo cuando el perfil tiene sus permisos', async () => {
+    api.session.mockResolvedValue({ ...user, permissions: [...user.permissions, 'reparto:operate', 'abastecimiento:manage', 'produccion:read'] });
+    await renderRoute('/');
+    const guided = container.querySelector('section[aria-labelledby="guided-flows-heading"]')!;
+    expect(guided.querySelector('a[href="/repartidor"]')?.textContent).toContain('Registrar existencias');
+    expect(guided.querySelector('a[href="/sucursales/propuesta-abastecimiento"]')?.textContent).toContain('Revisar inventario y preparar abastecimiento');
+    expect(guided.querySelector('a[href="/produccion"]')?.textContent).toContain('Consultar producción');
+
+    await act(async () => { root.unmount(); });
+    root = createRoot(container);
+    api.session.mockResolvedValue(user);
+    await renderRoute('/');
+    const noGuidedFlows = container.querySelector('section[aria-labelledby="guided-flows-heading"]');
+    expect(noGuidedFlows?.querySelector('a[href="/repartidor"]')).toBeNull();
+    expect(noGuidedFlows?.querySelector('a[href="/produccion"]')).toBeNull();
+    expect(noGuidedFlows?.querySelector('a[href="/inventario-sucursales"]')).toBeTruthy();
   });
 
   it('blocks a deep route when the session lacks its required permission', async () => {

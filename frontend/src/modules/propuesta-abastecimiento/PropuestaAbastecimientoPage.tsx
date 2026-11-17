@@ -1,12 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router';
+import { Link, useOutletContext, useSearchParams } from 'react-router';
+import type { AuthUser } from '../../shared/api/auth';
 import { sucursalesApi } from '../../shared/api/sucursales';
 import { propuestasAbastecimientoApi, type PropuestaAbastecimiento } from '../../shared/api/propuestas-abastecimiento';
 
 const proposalKey = (fecha: string) => ['propuestas-abastecimiento', fecha] as const;
 
 export function PropuestaAbastecimientoPage() {
+  const user = useOutletContext<AuthUser | null>();
   const client = useQueryClient();
   const [searchParams] = useSearchParams();
   const linkedProposalId = Number(searchParams.get('propuestaId'));
@@ -64,6 +66,7 @@ export function PropuestaAbastecimientoPage() {
         {current.detalles.length === 0 && <p className="mt-3 text-slate-600">No hay sabores activos o referencias para proponer.</p>}
         <div className="mt-4 flex flex-wrap gap-3">
           {notice && <p role="status" aria-live="polite" className="basis-full rounded bg-emerald-100 p-3 text-emerald-900">{notice}</p>}
+          {confirm.isSuccess && confirm.data?.id === current.id && <div className="basis-full rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-950"><p className="font-semibold">La propuesta quedó confirmada para {confirm.data.fecha}.</p>{user?.permissions.includes('abastecimiento:read') && <Link to={`/produccion/abastecimiento-sucursales?fecha=${encodeURIComponent(confirm.data.fecha)}`} className="mt-3 inline-flex min-h-11 items-center rounded bg-fuchsia-800 px-4 font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-800">Ver abastecimiento aprobado de esta fecha</Link>}<Link to="/" className="ml-3 mt-3 inline-flex min-h-11 items-center rounded border border-fuchsia-800 px-4 font-semibold text-fuchsia-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-800">Volver al inicio</Link></div>}
           {current.estado === 'BORRADOR' && <>
             <button type="button" disabled={!dirty || current.obsoleta || save.isPending} onClick={() => save.mutate()} className="min-h-11 rounded bg-fuchsia-800 px-5 font-semibold text-white disabled:opacity-50">{save.isPending ? 'Guardando…' : 'Guardar borrador'}</button>
             <button type="button" disabled={dirty || current.obsoleta || confirm.isPending || current.detalles.some((item) => item.saborActivo && (decisiones[item.saborId] ?? '') === '')} onClick={() => confirm.mutate()} className="min-h-11 rounded bg-emerald-700 px-5 font-semibold text-white disabled:opacity-50">Confirmar propuesta</button>

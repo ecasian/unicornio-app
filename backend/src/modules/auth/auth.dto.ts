@@ -1,9 +1,10 @@
-import { ArrayNotEmpty, ArrayUnique, IsArray, IsBoolean, IsEmail, IsInt, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { ArrayNotEmpty, ArrayUnique, IsArray, IsBoolean, Matches, IsInt, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class LoginDto {
-  @IsEmail()
+  @IsString()
   @MaxLength(254)
-  email!: string;
+  username!: string;
   @IsString()
   @MinLength(1)
   @MaxLength(128)
@@ -15,9 +16,9 @@ export class CreateUserDto {
   @MinLength(2)
   @MaxLength(120)
   nombre!: string;
-  @IsEmail()
-  @MaxLength(254)
-  email!: string;
+  @Transform(({ value }) => typeof value === 'string' ? value.trim().replace(/[A-Z]/g, (c: string) => c.toLowerCase()) : value)
+  @Matches(/^[a-z0-9._-]{3,40}$/)
+  username!: string;
   @IsString()
   @MinLength(12)
   @MaxLength(128)

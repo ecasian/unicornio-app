@@ -14,7 +14,7 @@ const roleLabels: Record<string, string> = {
 export function AdminUsersPage() {
   const currentUserPermissions = useOutletContext<AuthUser | undefined>()?.permissions ?? [];
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({ nombre: '', email: '', password: '', roles: [] as string[], repartidorId: '' });
+  const [form, setForm] = useState({ nombre: '', username: '', password: '', roles: [] as string[], repartidorId: '' });
   const [pendingRoles, setPendingRoles] = useState<Record<number, string[]>>({});
   const [passwords, setPasswords] = useState<Record<number, string>>({});
   const [message, setMessage] = useState('');
@@ -28,12 +28,12 @@ export function AdminUsersPage() {
   const create = useMutation({
     mutationFn: () => authApi.createUser({
       nombre: form.nombre,
-      email: form.email,
+      username: form.username,
       password: form.password,
       roles: form.roles,
       ...(form.repartidorId ? { repartidorId: Number(form.repartidorId) } : {}),
     }),
-    onSuccess: () => { setForm({ nombre: '', email: '', password: '', roles: [], repartidorId: '' }); setMessage('Usuario creado.'); setError(''); void invalidate(); },
+    onSuccess: () => { setForm({ nombre: '', username: '', password: '', roles: [], repartidorId: '' }); setMessage('Usuario creado.'); setError(''); void invalidate(); },
     onError: (reason: Error) => { setError(reason.message); setMessage(''); },
   });
   const setActive = useMutation({
@@ -64,7 +64,7 @@ export function AdminUsersPage() {
       <h2 className="text-lg font-medium">Crear cuenta interna</h2>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm">Nombre<input required minLength={2} className="mt-1 block w-full rounded border px-3 py-2" value={form.nombre} onChange={(event) => setForm({ ...form, nombre: event.target.value })} /></label>
-        <label className="text-sm">Correo<input required type="email" autoComplete="off" className="mt-1 block w-full rounded border px-3 py-2" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
+        <label className="text-sm">Usuario<input required type="text" autoComplete="off" className="mt-1 block w-full rounded border px-3 py-2" value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} /></label>
         <label className="text-sm">Contraseña inicial (12 a 128 caracteres)<input required minLength={12} maxLength={128} type="password" autoComplete="new-password" className="mt-1 block w-full rounded border px-3 py-2" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></label>
         {needsCourier && <label className="text-sm">Repartidor asignado
           <select required className="mt-1 block w-full rounded border px-3 py-2" value={form.repartidorId} onChange={(event) => setForm({ ...form, repartidorId: event.target.value })}>
@@ -94,10 +94,10 @@ export function AdminUsersPage() {
         const courier = user.repartidorId ? allCouriers.data?.find((item) => item.id === user.repartidorId) : undefined;
         return <article key={user.id} className="space-y-3 rounded-lg border bg-white p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><h3 className="font-medium">{user.nombre}</h3><p className="text-sm text-slate-600">{user.email}</p>{user.repartidorId && <p className="text-sm text-slate-700">Ficha vinculada: {courier ? `${courier.nombre} · ${courier.activo ? 'Activa' : 'Inactiva'}` : `ID ${user.repartidorId}${currentUserPermissions.includes('repartidores:read') ? '' : ' · sin permiso para consultar su nombre y estado'}`}</p>}</div>
+            <div><h3 className="font-medium">{user.nombre}</h3><p className="text-sm text-slate-600">{user.username}</p>{user.repartidorId && <p className="text-sm text-slate-700">Ficha vinculada: {courier ? `${courier.nombre} · ${courier.activo ? 'Activa' : 'Inactiva'}` : `ID ${user.repartidorId}${currentUserPermissions.includes('repartidores:read') ? '' : ' · sin permiso para consultar su nombre y estado'}`}</p>}</div>
             <button className="rounded border px-3 py-2 text-sm" disabled={setActive.isPending} onClick={() => setActive.mutate({ id: user.id, activo: !user.activo })}>{user.activo ? 'Desactivar' : 'Activar'}</button>
           </div>
-          {roleInput(selected, (next) => setPendingRoles({ ...pendingRoles, [user.id]: next }), `Usuario ${user.email}`)}
+          {roleInput(selected, (next) => setPendingRoles({ ...pendingRoles, [user.id]: next }), `Usuario ${user.username}`)}
           {pendingRoles[user.id] && <button className="rounded bg-slate-700 px-3 py-2 text-sm text-white" disabled={setUserRoles.isPending} onClick={() => setUserRoles.mutate({ id: user.id, selected })}>Guardar roles</button>}
           <div className="flex flex-col gap-2 sm:flex-row">
             <label className="text-sm">Restablecer contraseña<input type="password" minLength={12} maxLength={128} autoComplete="new-password" className="mt-1 block w-full rounded border px-3 py-2 sm:w-72" value={passwords[user.id] ?? ''} onChange={(event) => setPasswords({ ...passwords, [user.id]: event.target.value })} /></label>

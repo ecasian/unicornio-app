@@ -77,7 +77,7 @@ describe('protección del administrador general', () => {
       eventoAuditoria: { create: vi.fn() },
     };
     const { auth } = serviceWith(transaction);
-    await expect(auth.createUser({ nombre: 'Admin', email: 'admin@example.invalid', password: 'long-enough-test-password', roles: ['ADMIN_GENERAL'], repartidorId: 123 }, 1)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(auth.createUser({ nombre: 'Admin', username: 'admin@example.invalid', password: 'long-enough-test-password', roles: ['ADMIN_GENERAL'], repartidorId: 123 }, 1)).rejects.toBeInstanceOf(BadRequestException);
     expect(transaction.repartidor.findUnique).not.toHaveBeenCalled();
     expect(transaction.usuarioInterno.create).not.toHaveBeenCalled();
   });
@@ -91,7 +91,7 @@ describe('protección del administrador general', () => {
       eventoAuditoria: { create: vi.fn() },
     };
     const { auth } = serviceWith(transaction);
-    await expect(auth.createUser({ nombre: 'Repartidor', email: 'rep@example.invalid', password: 'long-enough-test-password', roles: ['REPARTIDOR'], repartidorId: 5 }, 1)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(auth.createUser({ nombre: 'Repartidor', username: 'rep@example.invalid', password: 'long-enough-test-password', roles: ['REPARTIDOR'], repartidorId: 5 }, 1)).rejects.toBeInstanceOf(BadRequestException);
     expect(transaction.usuarioInterno.create).not.toHaveBeenCalled();
   });
 });

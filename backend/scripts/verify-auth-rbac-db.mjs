@@ -13,8 +13,8 @@ const databaseUrl = process.env.DATABASE_URL;
 parseAuthTestDatabaseUrl(databaseUrl);
 
 const prisma = new PrismaClient();
-const suffix = randomUUID();
-const email = `auth-verify-${suffix}@example.invalid`;
+const suffix = randomUUID().slice(0, 12);
+const username = `auth-verify-${suffix}`;
 const tokenHash = (value) => createHash('sha256').update(value).digest('hex');
 const temporaryAdminIds = [];
 
@@ -44,7 +44,7 @@ try {
       if (activeAdmins > 0) return null;
       const candidate = await tx.usuarioInterno.create({ data: {
         nombre: `Bootstrap Race ${index}`,
-        email: `bootstrap-race-${index}-${suffix}@example.invalid`,
+        username: `bootstrap-race-${index}-${suffix}`,
         passwordHash: 'not-used-in-verification',
         roles: { create: { rolId: admin.id } },
       }, select: { id: true } });
@@ -72,13 +72,13 @@ try {
   }
 
   await prisma.$transaction(async (tx) => {
-    await tx.usuarioInterno.create({ data: { nombre: 'Rollback Auth Test', email: `rollback-${suffix}@example.invalid`, passwordHash } });
+    await tx.usuarioInterno.create({ data: { nombre: 'Rollback Auth Test', username: `rollback-${suffix}`, passwordHash } });
     await tx.eventoAuditoria.create({ data: { accion: 'AUTH_DB_ROLLBACK_PROBE', ruta: 'db-verifier', metodo: 'TEST', resultado: 'SUCCESS', requestId: `rollback-${suffix}` } });
     throw new Error('rollback probe');
   }).catch((error) => {
     if (error.message !== 'rollback probe') throw error;
   });
-  if (await prisma.usuarioInterno.findUnique({ where: { email: `rollback-${suffix}@example.invalid` } })) throw new Error('La transacción de rollback dejó un usuario persistido.');
+  if (await prisma.usuarioInterno.findUnique({ where: { username: `rollback-${suffix}` } })) throw new Error('La transacción de rollback dejó un usuario persistido.');
   if (await prisma.eventoAuditoria.findFirst({ where: { requestId: `rollback-${suffix}` } })) throw new Error('El rollback dejó evidencia terminal de una operación no confirmada.');
 
   const terminalRequestId = `terminal-${suffix}`;
@@ -232,7 +232,7 @@ try {
   await prisma.intentoAcceso.deleteMany({ where: { claveHash: { in: [successRollbackKey, successKey] } } });
 
   const user = await prisma.usuarioInterno.create({ data: {
-    nombre: 'Auth DB Verification', email, passwordHash,
+    nombre: 'Auth DB Verification', username, passwordHash,
     roles: { create: { rolId: admin.id } },
   } });
   const sessions = await Promise.all(Array.from({ length: 8 }, (_, index) => prisma.sesion.create({ data: {

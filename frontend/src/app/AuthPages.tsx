@@ -191,7 +191,7 @@ function AppShell({ user, children }: { user: AuthUser; children: ReactNode }) {
 }
 
 export function LoginPage() {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -200,7 +200,7 @@ export function LoginPage() {
   const location = useLocation();
   const session = useQuery({ queryKey: ['auth', 'session'], queryFn: authApi.session, retry: false });
   const login = useMutation({
-    mutationFn: () => authApi.login(email, password),
+    mutationFn: () => authApi.login(username, password),
     onSuccess: ({ user }) => {
       queryClient.setQueryData(['auth', 'session'], user);
       const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
@@ -223,8 +223,8 @@ export function LoginPage() {
       <form className="rounded-2xl border border-slate-200 bg-white p-6 shadow-lg sm:p-8" onSubmit={(event) => { event.preventDefault(); setErrorMessage(''); login.mutate(); }}>
         <h1 className="text-3xl font-bold tracking-tight text-slate-900">Iniciar sesión</h1>
         <p className="mt-2 text-sm text-slate-600">Acceso para el equipo Unicornio.</p>
-        <label className="mt-6 block text-sm font-semibold text-slate-800" htmlFor="email">Correo</label>
-        <input id="email" type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} className="mt-2 min-h-12 w-full rounded-lg border border-slate-300 px-3 py-2 text-base focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-700" />
+        <label className="mt-6 block text-sm font-semibold text-slate-800" htmlFor="username">Usuario</label>
+        <input id="username" type="text" autoComplete="username" required value={username} onChange={(event) => setUsername(event.target.value)} className="mt-2 min-h-12 w-full rounded-lg border border-slate-300 px-3 py-2 text-base focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-700" />
         <label className="mt-5 block text-sm font-semibold text-slate-800" htmlFor="password">Contraseña</label>
         <div className="relative mt-2">
           <input id="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} className="min-h-12 w-full rounded-lg border border-slate-300 py-2 pl-3 pr-14 text-base focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fuchsia-700" />

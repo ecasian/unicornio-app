@@ -78,7 +78,7 @@ async function enter(label: string, value: string) {
 }
 
 async function renderFlow(session: Record<string, unknown> = {
-  id: 2, email: 'admin@example.invalid', nombre: 'Admin Demo', repartidorId: null,
+  id: 2, username: 'admin', nombre: 'Admin Demo', repartidorId: null,
   roles: ['ADMIN_GENERAL'], permissions: ['auth:session', 'reparto:operate', 'clientes:read', 'repartidores:read'],
 }) {
   vi.stubGlobal('fetch', withCsrfMock(fetchMock, session));
@@ -222,7 +222,7 @@ afterEach(async () => {
 
 describe('inicio de Repartidor', () => {
   it('usa la ficha vinculada sin pedir selección al perfil REPARTIDOR', async () => {
-    await renderFlow({ id: 7, email: 'driver@example.invalid', nombre: 'Cuenta Jonathan', repartidorId: 1,
+    await renderFlow({ id: 7, username: 'driver', nombre: 'Cuenta Jonathan', repartidorId: 1,
       roles: ['REPARTIDOR'], permissions: ['auth:session', 'reparto:operate'] });
     expect(container.textContent).toContain('Repartidor: Jonathan');
     expect(container.textContent).not.toContain('¿Quién realiza la visita?');
@@ -233,7 +233,7 @@ describe('inicio de Repartidor', () => {
   });
 
   it('explica cómo resolver una cuenta REPARTIDOR sin ficha vinculada', async () => {
-    await renderFlow({ id: 8, email: 'unlinked@example.invalid', nombre: 'Cuenta sin ficha', repartidorId: null,
+    await renderFlow({ id: 8, username: 'unlinked', nombre: 'Cuenta sin ficha', repartidorId: null,
       roles: ['REPARTIDOR'], permissions: ['auth:session', 'reparto:operate'] });
     expect(container.textContent).toContain('Tu cuenta no tiene una ficha vinculada');
     expect(container.textContent).toContain('ADMIN_GENERAL');

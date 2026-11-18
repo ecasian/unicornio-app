@@ -16,7 +16,7 @@ let proposal: PropuestaAbastecimiento;
 let created: boolean;
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
 const flush = async () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-const proposalUser: AuthUser = { id: 1, email: 'demo@example.invalid', nombre: 'Demo', roles: ['ADMIN_GENERAL'], permissions: ['abastecimiento:manage', 'abastecimiento:read'], repartidorId: null };
+const proposalUser: AuthUser = { id: 1, username: 'demo', nombre: 'Demo', roles: ['ADMIN_GENERAL'], permissions: ['abastecimiento:manage', 'abastecimiento:read'], repartidorId: null };
 
 async function renderProposal(initialEntry = '/') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });

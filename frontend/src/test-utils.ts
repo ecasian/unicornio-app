@@ -7,7 +7,7 @@ export function withCsrfMock(apiFetch: unknown, session?: Record<string, unknown
     if (String(input) === '/api/auth/session') {
       return new Response(JSON.stringify(session ?? {
         id: 1,
-        email: 'test@example.invalid',
+        username: 'test',
         nombre: 'Usuario de prueba',
         repartidorId: 1,
         roles: ['REPARTIDOR'],

@@ -81,11 +81,11 @@ async function verifyLocalLogin(origin, expectedUserId, password) {
       'X-CSRF-Token': csrf.csrfToken,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ email: TARGET_EMAIL, password }),
+    body: JSON.stringify({ username: TARGET_EMAIL, password }),
   });
   if (!loginResponse.ok) throw new Error(`El login local de verificación devolvió HTTP ${loginResponse.status}.`);
   const loginBody = await loginResponse.json();
-  if (loginBody.user?.id !== expectedUserId || loginBody.user?.email !== TARGET_EMAIL || 'passwordHash' in loginBody.user) {
+  if (loginBody.user?.id !== expectedUserId || 'passwordHash' in loginBody.user) {
     throw new Error('El login no devolvió la identidad pública DEMO esperada.');
   }
 

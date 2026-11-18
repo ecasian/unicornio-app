@@ -35,7 +35,7 @@ beforeEach(() => {
       { codigo: 'REPARTIDOR', nombre: 'Repartidor' },
       { codigo: 'OPERADOR_PRODUCCION', nombre: 'Operador de producción' },
     ]);
-    if (url === '/api/auth/users' && method === 'POST') return json({ id: 12, nombre: 'Fer', email: 'fer@example.invalid', activo: true, repartidorId: null }, 201);
+    if (url === '/api/auth/users' && method === 'POST') return json({ id: 12, nombre: 'Fer', username: 'fer', activo: true, repartidorId: null }, 201);
     if (url === '/api/auth/audit') return json([{
       id: '9007199254740993', actorUsuarioId: null, accion: 'MUTATION_REQUESTED', ruta: '/api/clientes',
       metodo: 'POST', resultado: 'REQUESTED', requestId: 'req-1', metadata: {}, createdAt: '2026-11-12T18:00:00.000Z', actor: null,
@@ -63,7 +63,7 @@ async function render(element: ReactNode) {
 
 async function renderWithCourierRead(element: ReactNode) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-  const user = { id: 1, email: 'admin@example.invalid', nombre: 'Admin', repartidorId: null,
+  const user = { id: 1, username: 'admin', nombre: 'Admin', repartidorId: null,
     roles: ['ADMIN_GENERAL'], permissions: ['usuarios:manage', 'repartidores:read'] };
   await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/']}>
     <Routes><Route element={<Outlet context={user} />}><Route path="/" element={element} /></Route></Routes>
@@ -82,7 +82,7 @@ describe('administración de acceso', () => {
       input.dispatchEvent(new Event('change', { bubbles: true }));
     });
     await setInput(inputs[0], 'Fer');
-    await setInput(inputs[1], 'fer@example.invalid');
+    await setInput(inputs[1], 'fer');
     await setInput(inputs[2], 'secure-test-password');
     const role = container.querySelector('input[aria-label="Crear Administrador general"]') as HTMLInputElement;
     await act(async () => role.click());
@@ -92,7 +92,7 @@ describe('administración de acceso', () => {
     await flush(); await flush();
     expect(created).toContainEqual({
       url: '/api/auth/users', method: 'POST',
-      body: { nombre: 'Fer', email: 'fer@example.invalid', password: 'secure-test-password', roles: ['ADMIN_GENERAL'] },
+      body: { nombre: 'Fer', username: 'fer', password: 'secure-test-password', roles: ['ADMIN_GENERAL'] },
     });
     expect(container.querySelector('[role="status"]')?.textContent).toBe('Usuario creado.');
   });
@@ -119,18 +119,18 @@ describe('administración de acceso', () => {
       input.dispatchEvent(new Event('change', { bubbles: true }));
     });
     await setInput(inputs[0], 'Repartidora Demo');
-    await setInput(inputs[1], 'repartidora@example.invalid');
+    await setInput(inputs[1], 'repartidora');
     await setInput(inputs[2], 'secure-test-password');
     await act(async () => container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
     await flush(); await flush();
     expect(created).toContainEqual(expect.objectContaining({
       url: '/api/auth/users', method: 'POST',
-      body: { nombre: 'Repartidora Demo', email: 'repartidora@example.invalid', password: 'secure-test-password', roles: ['REPARTIDOR'], repartidorId: 5 },
+      body: { nombre: 'Repartidora Demo', username: 'repartidora', password: 'secure-test-password', roles: ['REPARTIDOR'], repartidorId: 5 },
     }));
   });
 
   it('distingue la cuenta de la ficha vinculada y conserva su estado inactivo', async () => {
-    listedUsers = [{ id: 9, nombre: 'Usuario vinculado', email: 'linked@example.invalid', activo: true, repartidorId: 5,
+    listedUsers = [{ id: 9, nombre: 'Usuario vinculado', username: 'linked', activo: true, repartidorId: 5,
       roles: [{ rol: { codigo: 'REPARTIDOR', nombre: 'Repartidor' } }] }];
     await renderWithCourierRead(<AdminUsersPage />);
     expect(container.textContent).toContain('Cuentas y permisos');

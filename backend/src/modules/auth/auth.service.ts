@@ -157,10 +157,10 @@ export class AuthService implements OnModuleInit {
     }
   }
 
-  private async consumeLoginAttempt(email: string, ip: string): Promise<void> {
+  private async consumeLoginAttempt(accountKey: string, ip: string): Promise<void> {
     await this.prisma.intentoAcceso.deleteMany({ where: { updatedAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } } });
     await this.consumeRateLimit(`ip\0${ip}`, 100);
-    await this.consumeRateLimit(`email-ip\0${email}\0${ip}`, RATE_LIMIT);
+    await this.consumeRateLimit(`account-ip\0${accountKey}\0${ip}`, RATE_LIMIT);
   }
 
   private async publicUser(userId: number, database: Pick<Prisma.TransactionClient, 'usuarioInterno'> = this.prisma): Promise<AuthenticatedUser> {
@@ -171,7 +171,7 @@ export class AuthService implements OnModuleInit {
     if (!user || !user.activo) throw new UnauthorizedException('Sesión no válida');
     return {
       id: user.id,
-      email: user.email,
+      username: user.username,
       nombre: user.nombre,
       repartidorId: user.repartidorId,
       roles: user.roles.map(({ rol }) => rol.codigo),
@@ -183,15 +183,16 @@ export class AuthService implements OnModuleInit {
     await transaction.$executeRaw`SELECT pg_advisory_xact_lock(${ADMIN_ROSTER_LOCK_NAMESPACE}::integer, 1::integer)`;
   }
 
-  async login(emailInput: string, password: string, request: Request, response: Response): Promise<{ user: AuthenticatedUser }> {
-    const email = emailInput.trim().toLowerCase();
+  async login(identifierInput: string, password: string, request: Request, response: Response): Promise<{ user: AuthenticatedUser }> {
+    const identifier = identifierInput.trim().toLowerCase();
     const ip = request.ip || request.socket.remoteAddress || 'unknown';
-    await this.consumeLoginAttempt(email, ip);
-    const user = await this.prisma.usuarioInterno.findUnique({ where: { email } });
+    const user = await this.prisma.usuarioInterno.findUnique({ where: identifier.includes('@') ? { email: identifier } : { username: identifier } });
+    const accountKey = user ? `user:${user.id}` : `unknown:${identifier}`;
+    await this.consumeLoginAttempt(accountKey, ip);
     const passwordMatches = user ? await verifyPassword(password, user.passwordHash) : (await burnPasswordCheck(password), false);
     if (!user || !user.activo || !passwordMatches) {
       await this.prisma.eventoAuditoria.create({ data: { accion: 'AUTH_LOGIN_FAILED', ruta: '/api/auth/login', metodo: 'POST', resultado: 'DENIED', requestId: auditRequestId(request) } });
-      throw new UnauthorizedException('Correo o contraseña incorrectos');
+      throw new UnauthorizedException('Usuario o contraseña incorrectos');
     }
     setAuditActor(user.id);
     const currentToken = cookieValue(request, this.cookieName());
@@ -201,9 +202,9 @@ export class AuthService implements OnModuleInit {
       const authenticatedUser = await this.prisma.$transaction(async (tx) => {
         await tx.$queryRaw`SELECT id FROM "UsuarioInterno" WHERE id = ${user.id} FOR UPDATE`;
         const currentUser = await tx.usuarioInterno.findUnique({ where: { id: user.id }, select: { passwordHash: true, activo: true } });
-        if (!currentUser?.activo || currentUser.passwordHash !== user.passwordHash) throw new UnauthorizedException('Correo o contraseña incorrectos');
+        if (!currentUser?.activo || currentUser.passwordHash !== user.passwordHash) throw new UnauthorizedException('Usuario o contraseña incorrectos');
         if (currentToken) await tx.sesion.updateMany({ where: { tokenHash: sha256(currentToken), revokedAt: null }, data: { revokedAt: new Date() } });
-        await tx.intentoAcceso.deleteMany({ where: { claveHash: sha256(`email-ip\0${email}\0${ip}`) } });
+        await tx.intentoAcceso.deleteMany({ where: { claveHash: sha256(`account-ip\0${accountKey}\0${ip}`) } });
         await tx.sesion.create({ data: {
           tokenHash: sha256(sessionToken), csrfHash: sha256(csrfToken), usuarioId: user.id,
           expiresAt: new Date(Date.now() + SESSION_LIFETIME_MS),
@@ -253,7 +254,7 @@ export class AuthService implements OnModuleInit {
 
   async listUsers() {
     return this.prisma.usuarioInterno.findMany({
-      select: { id: true, nombre: true, email: true, activo: true, repartidorId: true, createdAt: true, updatedAt: true, roles: { select: { rol: { select: { codigo: true, nombre: true } } } } },
+      select: { id: true, nombre: true, username: true, activo: true, repartidorId: true, createdAt: true, updatedAt: true, roles: { select: { rol: { select: { codigo: true, nombre: true } } } } },
       orderBy: { id: 'asc' },
     });
   }
@@ -262,7 +263,7 @@ export class AuthService implements OnModuleInit {
     return this.prisma.rol.findMany({ include: { permisos: { include: { permiso: true } } }, orderBy: { codigo: 'asc' } });
   }
 
-  async createUser(data: { nombre: string; email: string; password: string; roles: string[]; repartidorId?: number }, actorId: number, requestId?: string) {
+  async createUser(data: { nombre: string; username: string; password: string; roles: string[]; repartidorId?: number }, actorId: number, requestId?: string) {
     const passwordHash = await hashPassword(data.password);
     return this.prisma.$transaction(async (tx) => {
       await this.lockAdminRoster(tx);
@@ -278,16 +279,23 @@ export class AuthService implements OnModuleInit {
       const user = await tx.usuarioInterno.create({
         data: {
           nombre: data.nombre.trim(),
-          email: data.email.trim().toLowerCase(),
+          username: data.username.trim().toLowerCase(),
           passwordHash,
           repartidorId: data.repartidorId,
           roles: { create: roles.map(({ id }) => ({ rolId: id })) },
         },
-        select: { id: true, nombre: true, email: true, activo: true, repartidorId: true },
+        select: { id: true, nombre: true, username: true, activo: true, repartidorId: true },
       });
       await tx.eventoAuditoria.create({ data: { actorUsuarioId: actorId, accion: 'USER_CREATED', ruta: '/api/auth/users', metodo: 'POST', resultado: 'SUCCESS', requestId, metadata: { userId: user.id, roleCodes: data.roles } } });
       await recordMutationSucceededInTransaction(tx);
       return user;
+    }).catch((error: unknown) => {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const fields = error.meta?.target;
+        if (Array.isArray(fields) && fields.includes('username')) throw new ConflictException('El usuario ya existe');
+        if (Array.isArray(fields) && fields.includes('repartidorId')) throw new ConflictException('La ficha ya está vinculada');
+      }
+      throw error;
     });
   }
 
@@ -351,7 +359,7 @@ export class AuthService implements OnModuleInit {
     const events = await this.prisma.eventoAuditoria.findMany({
       take: Math.min(Math.max(take, 1), 500),
       orderBy: { createdAt: 'desc' },
-      include: { actor: { select: { id: true, nombre: true, email: true } } },
+      include: { actor: { select: { id: true, nombre: true, username: true } } },
     });
     return events.map((event) => ({ ...event, id: event.id.toString() }));
   }

@@ -8,7 +8,7 @@ export const RequirePermission = (permission: string) => SetMetadata(REQUIRED_PE
 
 export type AuthenticatedUser = {
   id: number;
-  email: string;
+  username: string;
   nombre: string;
   repartidorId: number | null;
   roles: string[];

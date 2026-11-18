@@ -71,7 +71,7 @@ movimientos, sin ventas contables.
 | `PedidoProduccion` | `id`, `clienteId`, `repartidorId`, `registroExistenciasId`, `estado`, `createdAt` | Referencia obligatoria y única al snapshot que lo originó; tiene detalles. Solo se crea si existe algún faltante positivo. `estado` es `VIGENTE` o `SUSTITUIDO`; los pedidos anteriores se conservan. |
 | `DetallePedido` | `pedidoProduccionId`, `saborId`, `presentacionId`, `cantidadSugerida`, `cantidadSolicitada` | Una fila por faltante positivo; hereda la fecha/hora de su cabecera. Ambas cantidades son iguales en este slice. |
 | `MovimientoBitacora` | `id`, `clienteId`, `repartidorId`, `createdAt`, `tipo`, `registroExistenciasId` nullable, `pedidoProduccionId` nullable | `createdAt` es la fecha/hora del movimiento. Exactamente una referencia, según `tipo`. |
-| `UsuarioInterno` | `id`, `nombre`, correo normalizado único, `passwordHash` Argon2id, `activo`, `repartidorId` nullable único, timestamps | Tiene roles y sesiones; la relación opcional con `Repartidor` limita las operaciones del rol `REPARTIDOR`. |
+| `UsuarioInterno` | `id`, `nombre`, username único normalizado, correo histórico opcional, `passwordHash` Argon2id, `activo`, `repartidorId` nullable único, timestamps | Tiene roles y sesiones; la relación opcional con `Repartidor` limita las operaciones del rol `REPARTIDOR`. |
 | `Rol`, `Permiso` | `codigo` único y nombre/descripción | Catálogos sembrados por migración; la matriz se relaciona mediante `RolPermiso`. |
 | `UsuarioRol`, `RolPermiso` | Claves compuestas de sus dos FKs, `assignedAt` para `UsuarioRol` | Permiten roles múltiples y permisos declarativos sin duplicar usuarios. FKs restrictivas. |
 | `Sesion` | UUID, `tokenHash`, `csrfHash`, `usuarioId` nullable, `expiresAt`, `revokedAt`, `lastSeenAt` | El valor aleatorio del navegador nunca se guarda en claro. Sesiones anónimas temporales sirven para CSRF previo al login. |
@@ -414,3 +414,7 @@ correspondiente. Cada entrada guarda exactamente una de las referencias
 `registroExistenciasId` o `pedidoProduccionId`, de acuerdo con `tipo`. No hay
 captura manual, ventas contables ni entradas para acciones futuras fuera del
 MVP.
+
+### Transición al acceso por usuario
+
+En Cuentas y permisos, verifica el usuario asignado a cada cuenta. Un administrador puede consultar `SELECT id, nombre, username FROM "UsuarioInterno" ORDER BY id;`. Antes de retirar el acceso con correo histórico, prueba el usuario de cada administrador en una ventana privada con su contraseña actual. El límite por cuenta e IP se comparte entre los dos identificadores.

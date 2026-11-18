@@ -19,7 +19,7 @@ export function AuditPage() {
         <h2 className="font-semibold">{event.accion}</h2>
         <time className="text-sm text-slate-600" dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString('es-MX')}</time>
       </div>
-      <p className="mt-1 text-sm">{event.actor?.nombre ?? 'Sin actor autenticado'}{event.actor ? ` · ${event.actor.email}` : ''}</p>
+      <p className="mt-1 text-sm">{event.actor?.nombre ?? 'Sin actor autenticado'}{event.actor ? ` · ${event.actor.username}` : ''}</p>
       <p className="mt-1 break-all font-mono text-xs text-slate-700">{event.metodo} {event.ruta} · {event.resultado}</p>
       {event.requestId && <p className="mt-1 text-xs text-slate-500">Solicitud {event.requestId}</p>}
     </article>)}

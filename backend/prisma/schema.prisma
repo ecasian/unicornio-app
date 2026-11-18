@@ -39,7 +39,8 @@ model Repartidor {
 model UsuarioInterno {
   id           Int               @id @default(autoincrement())
   nombre       String
-  email        String            @unique
+  username     String            @unique @db.VarChar(40)
+  email        String?           @unique
   passwordHash String
   activo       Boolean           @default(true)
   repartidorId Int?              @unique

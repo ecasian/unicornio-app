@@ -21,7 +21,7 @@ export class AuthController {
   @Post('login')
   @HttpCode(200)
   login(@Body() body: LoginDto, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
-    return this.auth.login(body.email, body.password, request, response);
+    return this.auth.login(body.username, body.password, request, response);
   }
 
   @RequirePermission('auth:session')

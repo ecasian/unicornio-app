@@ -55,9 +55,9 @@ try {
 
   const readline = createInterface({ input: stdin, output: stdout });
   const nombre = (await readline.question('Nombre del primer administrador: ')).trim();
-  const email = (await readline.question('Correo del primer administrador: ')).trim().toLowerCase();
+  const username = (await readline.question('Usuario del primer administrador: ')).trim().toLowerCase();
   readline.close();
-  if (nombre.length < 2 || !/^\S+@\S+\.\S+$/.test(email)) throw new Error('Nombre o correo inválido.');
+  if (nombre.length < 2 || !/^[a-z0-9._-]{3,40}$/.test(username)) throw new Error('Nombre o usuario inválido.');
   const password = await readMasked('Contraseña (mínimo 12 caracteres): ');
   if (password.length < 12 || password.length > 128) throw new Error('La contraseña debe tener entre 12 y 128 caracteres.');
   const confirmation = await readMasked('Repite la contraseña: ');
@@ -70,7 +70,7 @@ try {
     if (activeAdminCount > 0) throw new Error('Ya existe un administrador general activo; el bootstrap inicial no crea otra cuenta.');
     const created = await tx.usuarioInterno.create({ data: {
       nombre,
-      email,
+      username,
       passwordHash,
       roles: { create: { rolId: role.id } },
     } });

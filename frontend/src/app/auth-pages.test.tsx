@@ -15,7 +15,7 @@ let root: Root;
 let client: QueryClient;
 const user: AuthUser = {
   id: 4,
-  email: 'fer@example.invalid',
+  username: 'fer',
   nombre: 'Fer',
   repartidorId: null,
   roles: ['ADMIN_SUCURSALES'],
